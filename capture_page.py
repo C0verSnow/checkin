@@ -40,13 +40,22 @@ def save_html(launch, url, output, timeout_seconds=60, wait_seconds=15):
     browser = launch(headless=True, locale="zh-CN", timezone="Asia/Shanghai")
     try:
         page = browser.new_page()
+        responses = {}
+        page.on('response', lambda response: responses.__setitem__(response.url, response))
         response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_seconds * 1000)
         # Video sites keep background connections open; avoid networkidle.
         page.wait_for_timeout(wait_seconds * 1000)
-        html = page.content()
+        from offline_page import snapshot
+        html, report = snapshot(page, timeout_seconds, responses)
         if not html.strip():
             raise RuntimeError("浏览器返回了空页面")
         output.write_text(html, encoding="utf-8")
+        import json
+        output.with_suffix('.resources.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        if report['failed_resources']:
+            print(f"注意：{len(report['failed_resources'])} 个资源未能保存，详情见资源报告")
+        if report.get('unavailable_unused_images'):
+            print(f"说明：{len(report['unavailable_unused_images'])} 张未用于当前可见页面的 CSS 图片无法下载，已记入资源报告")
         print(f"已保存：{output.resolve()}（{output.stat().st_size} 字节）")
         print(f"当前页面：{page.url}")
         if response is None:
@@ -58,7 +67,7 @@ def save_html(launch, url, output, timeout_seconds=60, wait_seconds=15):
 
 
 def main(url, default_output, argv=None):
-    parser = argparse.ArgumentParser(description="在 Linux 上用 CloakBrowser 保存网页 HTML")
+    parser = argparse.ArgumentParser(description="在 Linux 上用 CloakBrowser 保存可离线打开的网页 HTML")
     parser.add_argument("--output", type=Path, default=Path(default_output))
     parser.add_argument("--timeout-seconds", type=positive_seconds, default=60)
     parser.add_argument("--wait-seconds", type=nonnegative_seconds, default=15)
@@ -66,6 +75,13 @@ def main(url, default_output, argv=None):
     if sys.platform != "linux":
         parser.error("请在 Linux 系统中运行，并使用 Python 虚拟环境")
     try:
+        for module, package in [('bs4', 'beautifulsoup4'), ('tinycss2', 'tinycss2'), ('html5lib', 'html5lib')]:
+            try:
+                importlib.import_module(module)
+            except ModuleNotFoundError as exc:
+                if exc.name != module:
+                    raise
+                subprocess.run([sys.executable, '-m', 'pip', 'install', package], check=True)
         cloakbrowser = ensure_cloakbrowser()
         save_html(cloakbrowser.launch, url, args.output, args.timeout_seconds, args.wait_seconds)
     except Exception as exc:
