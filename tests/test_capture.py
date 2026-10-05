@@ -34,11 +34,13 @@ class CaptureTests(unittest.TestCase):
             with self.subTest(url=url), tempfile.TemporaryDirectory() as directory:
                 browser = Mock()
                 page = browser.new_page.return_value
+                page.url = url
                 page.goto.return_value.status = 200
-                page.content.return_value = "<html><body>罗生门：动态内容</body></html>"
+                page.evaluate.return_value = {'html': '<html><head></head><body>罗生门：动态内容</body></html>', 'base': url}
                 output = Path(directory) / "nested" / "page.html"
                 capture_page.save_html(Mock(return_value=browser), url, output, 30, 2)
-                self.assertEqual(output.read_text(encoding="utf-8"), page.content.return_value)
+                self.assertIn('罗生门：动态内容', output.read_text(encoding="utf-8"))
+                self.assertTrue(output.with_suffix('.resources.json').is_file())
                 page.goto.assert_called_once_with(url, wait_until="domcontentloaded", timeout=30000)
                 page.wait_for_timeout.assert_called_once_with(2000)
                 browser.close.assert_called_once()
@@ -54,7 +56,8 @@ class CaptureTests(unittest.TestCase):
     def test_http_error_keeps_diagnostic_html_but_fails(self):
         browser = Mock()
         browser.new_page.return_value.goto.return_value.status = 403
-        browser.new_page.return_value.content.return_value = "<html>Forbidden</html>"
+        browser.new_page.return_value.url = bilibili.URL
+        browser.new_page.return_value.evaluate.return_value = {'html': '<html><head></head><body>Forbidden</body></html>', 'base': bilibili.URL}
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "page.html"
             with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
