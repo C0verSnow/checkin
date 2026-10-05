@@ -55,8 +55,8 @@ SNAPSHOT = r"""() => {
         for (const pseudo of [null, '::before', '::after']) {
             const style = getComputedStyle(el, pseudo);
             for (const property of style) {
-                for (const match of style.getPropertyValue(property).matchAll(/url\(["']?(.*?)["']?\)/g)) {
-                    cssURLs.add(new URL(match[1], document.baseURI).href);
+                for (const match of style.getPropertyValue(property).matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/g)) {
+                    cssURLs.add(new URL(match[1] ?? match[2] ?? match[3].trim(), document.baseURI).href);
                 }
             }
         }
