@@ -47,3 +47,7 @@ python bilibili.py --output output/custom-bilibili.html --wait-seconds 30
 打开仓库的 **Actions → Linux HTML capture → 对应运行 → Artifacts** 下载 HTML。两个网站分别运行，其中一个失败不会取消另一个；错误页也会上传，方便查看失败原因。外部网站能否访问仍取决于网站和 GitHub runner 的网络。
 
 按仓库约定，不在本地进行构建、编译或会触发编译的测试。运行验证放在远端 Linux CI；执行过程记录在 `tasklist.md`。
+
+## 本次运行结果
+
+2026-10-05 的 [远端 Linux CI](https://github.com/huan00000/checkin/actions/runs/37318785381) 全部通过：8 个单元测试、真实浏览器渲染测试以及两个网站抓取。B 站 HTML 包含“罗生门”搜索结果和视频链接；抖音保存了搜索页面，但当时提示登录后才能搜索更多视频。这个结果只代表该次运行，网站之后可能改变访问要求。
