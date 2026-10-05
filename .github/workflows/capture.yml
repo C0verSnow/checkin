@@ -1,0 +1,56 @@
+name: Linux HTML capture
+
+on:
+  push:
+    branches: [main, 'issue-1-*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests (no external websites)
+        run: python -m unittest discover -s tests -p test_capture.py -v
+      - name: Install Linux browser dependencies
+        run: |
+          python -m pip install playwright
+          python -m playwright install-deps chromium
+      - name: Real CloakBrowser JavaScript rendering test
+        run: python -m unittest discover -s tests -p test_browser.py -v
+
+  capture:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        site: [douyin, bilibili]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux browser dependencies
+        run: |
+          python -m pip install playwright
+          python -m playwright install-deps chromium
+      - name: Save search page (script installs cloakbrowser)
+        run: python ${{ matrix.site }}.py
+      - name: Upload HTML, including error pages for diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.site }}-html
+          path: output/${{ matrix.site }}.html
+          if-no-files-found: warn
+          retention-days: 7
