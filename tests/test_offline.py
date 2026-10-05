@@ -24,6 +24,7 @@ class OfflineTests(unittest.TestCase):
         self.assertEqual(len(resources.cache), 4)
         resources.embed('/css/main.css', page.url, css=True)
         self.assertEqual(resources.fetch.call_count, 4)
+        self.assertIn('data:image/svg+xml;base64,', resources.css('background:image-set("../image(1).svg" 1x)', 'https://example.com/css/main.css'))
 
     def test_snapshot_removes_restart_scripts_and_keeps_online_links(self):
         page = Mock(url='https://example.com/search')
@@ -31,7 +32,7 @@ class OfflineTests(unittest.TestCase):
             <html><head><base href="https://example.com/assets/"><meta http-equiv="refresh" content="1">
             <style>.x {color:red}</style></head><body onload="restart()">
             <script>restart()</script><a href="../video/123">视频</a>
-            <img src="missing.svg" onerror="restart()"><svg><use href="sprite.svg#icon"></use></svg>
+            <img src="missing.svg" onerror="restart()"><svg><use class="icon" fill="red" href="sprite.svg#icon"></use></svg>
             </body></html>'''}
         def response(url, **kwargs):
             result = Mock(ok=not url.endswith('missing.svg'), status=404, url=url)
@@ -46,6 +47,7 @@ class OfflineTests(unittest.TestCase):
         self.assertEqual(soup.meta['charset'], 'utf-8')
         self.assertNotIn('onload', soup.body.attrs)
         self.assertIsNotNone(soup.find('path'))
+        self.assertEqual(soup.select_one('svg .icon')['fill'], 'red')
         self.assertIn('https://example.com/assets/missing.svg', report['failed_resources'])
 
     def test_circular_stylesheets_stop_and_report(self):

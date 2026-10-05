@@ -128,6 +128,13 @@ class Resources:
                 if len(args) == 1 and args[0].type == 'string':
                     value = self.embed(args[0].value, base)
                     token.arguments = tinycss2.parse_component_value_list(json.dumps(value))
+            elif token.type == 'function' and token.lower_name in ('image-set', '-webkit-image-set'):
+                for item in token.arguments:
+                    if item.type == 'string':
+                        value = self.embed(item.value, base)
+                        item.value = value
+                        item.representation = json.dumps(value)
+                self.rewrite_tokens(token.arguments, base)
             elif token.type == 'at-rule' and token.lower_at_keyword == 'import':
                 for item in token.prelude:
                     if item.type in ('string', 'url'):
@@ -155,6 +162,8 @@ class Resources:
 
 def snapshot(page, timeout_seconds=30, responses=None):
     document = page.evaluate(SNAPSHOT)
+    if not document['html'].strip():
+        raise RuntimeError('浏览器返回了空页面')
     soup = BeautifulSoup(document['html'], 'html5lib')
     base = document['base']
     resources = Resources(page, timeout_seconds, responses)
@@ -203,9 +212,10 @@ def snapshot(page, timeout_seconds=30, responses=None):
                             if symbol is None:
                                 raise RuntimeError('SVG 符号不存在')
                             symbol.name = 'svg'
-                            for key in ('x', 'y', 'width', 'height'):
-                                if tag.has_attr(key):
-                                    symbol[key] = tag[key]
+                            symbol.attrs.pop('id', None)
+                            for key, value in tag.attrs.items():
+                                if key not in ('href', 'xlink:href'):
+                                    symbol[key] = value
                             tag.replace_with(symbol)
                         except Exception as exc:
                             resources.failures[url] = str(exc)

@@ -46,7 +46,7 @@ python bilibili.py --output output/custom-bilibili.html --wait-seconds 30
 
 1. 测试自动安装、UTF-8 保存、超时清理、HTTP 错误处理、嵌套 CSS、字体、图片、SVG 和资源失败报告。
 2. 用真实 CloakBrowser 保存测试网页，再用一个新的、断网的浏览器通过 `file://` 打开文件，检查文字、CSS、伪元素、字体、背景图片、响应式图片、SVG 和视频链接，并确认没有 HTTP 请求。截图在 `offline-verification` 附件中。
-3. 分别运行抖音、B 站脚本，上传 `douyin-html` 和 `bilibili-html` 两个附件，包含 HTML 和资源报告，保留 7 天。
+3. 分别运行抖音、B 站脚本，再断网打开两个真实网站的 HTML，检查资源失败、可见图片和外部请求，并保存截图。上传 `douyin-html` 和 `bilibili-html` 两个附件，包含 HTML、资源报告、打开检查报告和截图，保留 7 天。
 
 打开 **Actions → Linux HTML capture → 对应运行 → Artifacts** 下载并解压附件，双击 HTML 查看。两个网站分别运行，其中一个失败不会取消另一个；错误页也会上传。外部网站能否访问取决于网站和 GitHub runner 的网络。
 
