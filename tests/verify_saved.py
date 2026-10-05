@@ -30,6 +30,7 @@ def verify(output):
         diagnostics['external_requests'] = [url for url in requests if url.startswith(('http:', 'https:'))]
         report = json.loads(output.with_suffix('.resources.json').read_text(encoding='utf-8'))
         diagnostics['failed_resources'] = len(report['failed_resources'])
+        diagnostics['unavailable_unused_images'] = len(report.get('unavailable_unused_images', {}))
         page.screenshot(path=str(output.with_suffix('.png')), full_page=True)
         output.with_suffix('.verification.json').write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(diagnostics, ensure_ascii=False))

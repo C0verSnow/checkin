@@ -54,6 +54,8 @@ def save_html(launch, url, output, timeout_seconds=60, wait_seconds=15):
         output.with_suffix('.resources.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         if report['failed_resources']:
             print(f"注意：{len(report['failed_resources'])} 个资源未能保存，详情见资源报告")
+        if report.get('unavailable_unused_images'):
+            print(f"说明：{len(report['unavailable_unused_images'])} 张未用于当前可见页面的 CSS 图片无法下载，已记入资源报告")
         print(f"已保存：{output.resolve()}（{output.stat().st_size} 字节）")
         print(f"当前页面：{page.url}")
         if response is None:

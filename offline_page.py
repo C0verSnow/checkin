@@ -48,18 +48,33 @@ SNAPSHOT = r"""() => {
         style.textContent = [...sheet.cssRules].map(r => r.cssText).join('\n');
         root.querySelector('head').appendChild(style);
     }
-    return {html: '<!DOCTYPE html>\n' + root.outerHTML, base: document.baseURI};
+    const cssURLs = new Set();
+    for (const el of document.querySelectorAll('*')) {
+        const rect = el.getBoundingClientRect();
+        if (!rect.width || !rect.height || getComputedStyle(el).visibility === 'hidden') continue;
+        for (const pseudo of [null, '::before', '::after']) {
+            const style = getComputedStyle(el, pseudo);
+            for (const property of style) {
+                for (const match of style.getPropertyValue(property).matchAll(/url\(["']?(.*?)["']?\)/g)) {
+                    cssURLs.add(new URL(match[1], document.baseURI).href);
+                }
+            }
+        }
+    }
+    return {html: '<!DOCTYPE html>\n' + root.outerHTML, base: document.baseURI, css_urls: [...cssURLs]};
 }"""
 
 
 class Resources:
-    def __init__(self, page, timeout_seconds, responses=None):
+    def __init__(self, page, timeout_seconds, responses=None, css_urls=None):
         self.page = page
         self.timeout = timeout_seconds * 1000
         self.cache = {}
         self.failures = {}
         self.active = set()
         self.responses = responses or {}
+        self.css_urls = None if css_urls is None else set(css_urls)
+        self.unused_failures = {}
 
     def fetch(self, url):
         cached = self.responses.get(url)
@@ -77,7 +92,7 @@ class Resources:
         finally:
             response.dispose()
 
-    def embed(self, value, base, css=False):
+    def embed(self, value, base, css=False, optional=False):
         value = value.strip()
         if not value or value.startswith(('#', 'data:')):
             return value
@@ -87,6 +102,8 @@ class Resources:
             return ''
         key = (url, css)
         if key in self.cache:
+            if not optional and url in self.unused_failures:
+                self.failures[url] = self.unused_failures.pop(url)
             return self.cache[key] + ('#' + fragment if fragment else '')
         if key in self.active:
             self.failures[url] = '循环引用'
@@ -111,27 +128,35 @@ class Resources:
             self.cache[key] = result
             return result + ('#' + fragment if fragment else '')
         except Exception as exc:
-            self.failures[url] = str(exc)
+            (self.unused_failures if optional else self.failures)[url] = str(exc)
             self.cache[key] = ''
             return ''
         finally:
             self.active.remove(key)
 
+    def css_resource(self, value, base):
+        url = urljoin(base, value)
+        mime = mimetypes.guess_type(urlsplit(url).path)[0] or ''
+        # Sites ship CSS for hidden dialogs and other pages too. A failed image
+        # unused by every visible element/pseudo-element is reported separately.
+        optional = self.css_urls is not None and url not in self.css_urls and mime.startswith('image/')
+        return self.embed(value, base, optional=optional)
+
     def rewrite_tokens(self, tokens, base):
         for token in tokens:
             if token.type == 'url':
-                value = self.embed(token.value, base)
+                value = self.css_resource(token.value, base)
                 token.value = value
                 token.representation = 'url(' + json.dumps(value) + ')'
             elif token.type == 'function' and token.lower_name == 'url':
                 args = [t for t in token.arguments if t.type not in ('whitespace', 'comment')]
                 if len(args) == 1 and args[0].type == 'string':
-                    value = self.embed(args[0].value, base)
+                    value = self.css_resource(args[0].value, base)
                     token.arguments = tinycss2.parse_component_value_list(json.dumps(value))
             elif token.type == 'function' and token.lower_name in ('image-set', '-webkit-image-set'):
                 for item in token.arguments:
                     if item.type == 'string':
-                        value = self.embed(item.value, base)
+                        value = self.css_resource(item.value, base)
                         item.value = value
                         item.representation = json.dumps(value)
                 self.rewrite_tokens(token.arguments, base)
@@ -166,7 +191,7 @@ def snapshot(page, timeout_seconds=30, responses=None):
         raise RuntimeError('浏览器返回了空页面')
     soup = BeautifulSoup(document['html'], 'html5lib')
     base = document['base']
-    resources = Resources(page, timeout_seconds, responses)
+    resources = Resources(page, timeout_seconds, responses, document.get('css_urls'))
     for tag in soup.find_all(['script', 'base', 'iframe', 'object', 'embed']):
         tag.decompose()
     for tag in soup.find_all('meta'):
@@ -235,4 +260,9 @@ def snapshot(page, timeout_seconds=30, responses=None):
         for attr in list(tag.attrs):
             if attr.lower().startswith('on'):
                 del tag[attr]
-    return str(soup), {'page': page.url, 'embedded_resources': len(resources.cache), 'failed_resources': resources.failures}
+    return str(soup), {
+        'page': page.url,
+        'embedded_resources': sum(bool(value) for value in resources.cache.values()),
+        'failed_resources': resources.failures,
+        'unavailable_unused_images': resources.unused_failures,
+    }

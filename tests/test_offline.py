@@ -56,6 +56,17 @@ class OfflineTests(unittest.TestCase):
         self.assertTrue(resources.embed('https://example.com/a.css', '', css=True).startswith('data:'))
         self.assertIn('https://example.com/a.css', resources.failures)
 
+    def test_unused_css_image_failure_does_not_hide_required_failure(self):
+        resources = Resources(Mock(), 1, css_urls=['https://example.com/visible.png'])
+        resources.fetch = Mock(side_effect=RuntimeError('timeout'))
+        resources.css('background:url(hidden.png)', 'https://example.com/')
+        self.assertFalse(resources.failures)
+        self.assertIn('https://example.com/hidden.png', resources.unused_failures)
+        resources.css('background:url(visible.png)', 'https://example.com/')
+        self.assertIn('https://example.com/visible.png', resources.failures)
+        resources.embed('hidden.png', 'https://example.com/')
+        self.assertIn('https://example.com/hidden.png', resources.failures)
+
 
 if __name__ == '__main__':
     unittest.main()
