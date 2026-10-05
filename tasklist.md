@@ -6,6 +6,11 @@
 - 更新使用说明，在 GitHub 的 Linux 环境跑测试，提交 PR 并处理 issue。
 
 ## 做完：
+- issue #3：已完成，PR #4 已提交但尚未合并：https://github.com/huan00000/checkin/pull/4 。issue #3 已按要求关闭。
+- issue #3：最终代码提交 c5ccebc 的远端 Linux CI 全部通过：https://github.com/huan00000/checkin/actions/runs/37321991421 。12 个单元测试、真实浏览器断网打开测试、两站抓取和断网打开检查均通过。
+- issue #3：抖音保存 349 个资源、29 张图片和 40 个联网链接，当前页面需要的资源没有失败，没有可见坏图或外部请求。网站当时返回登录提示页；另有 1 张未用于当前可见元素或伪元素的 CSS 图片超时，已单独留在报告中。
+- issue #3：已下载最终 HTML、资源报告、检查报告和截图到 E:\git\checkin\output，已查看两站截图。HTML 可双击离线查看，视频链接联网访问原网站。
+- issue #3：2026-10-05 已完成静态阅读和 git diff --check，没有进行本地编译验证。
 - issue #3：远端单元测试和断网浏览器测试通过；B 站实际页面通过，173 个资源、49 张图片、170 个联网链接，无资源失败、坏图或外部请求，已查看截图。
 - issue #3：已按用户回复确认保存静态页面，不要求离线登录、继续搜索或播放视频。
 - issue #3：已在 fix 分支补上内嵌 CSS、嵌套图片和字体、SVG 图标、资源报告以及原网站视频链接。
@@ -20,7 +25,7 @@
 - PR 流程：https://github.com/huan00000/checkin/actions/runs/37318785381 。
 - 已下载并检查 HTML：B 站 1,133,306 字节，包含搜索结果和视频链接；抖音 765,616 字节，保存搜索页，但提示登录后才能搜索更多视频。
 - 两个 HTML 已放在本地 output 目录，不加入 Git；远端流程中也能下载附件。
-- 已提交 PR #2：https://github.com/huan00000/checkin/pull/2 ，尚未合并。
+- 已提交 PR #2：https://github.com/huan00000/checkin/pull/2 ，开始 issue #3 前已合并。
 - issue #1 已按要求关闭：https://github.com/huan00000/checkin/issues/1 。
 
 ## 没做：
@@ -28,6 +33,4 @@
 - 没有自动登录抖音；本次保存的是网站实际返回的搜索页面。
 
 ## 在做：
-- 2026-10-05：开始处理 issue #3，已更新仓库并切换到 fix 分支。
-- 已提交 PR #4：https://github.com/huan00000/checkin/pull/4 。
-- 抖音有一张 CSS 图片下载超时，但断网页面没有可见坏图或外部请求。正在按浏览器计算出的可见元素和伪元素资源区分当前需要的图片与未使用图片，并保留完整报告，再跑远端验证。
+- 无。issue #3 的代码、文档、远端验证、PR 和关闭 issue 均已完成。
