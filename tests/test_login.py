@@ -10,7 +10,7 @@ import tempfile
 import threading
 import unittest
 
-from capture_page import ensure_cloakbrowser
+from browser_setup import ensure_cloakbrowser
 from douyin_login import capture_login, open_login, sms_result, sms_endpoint, summarize_sms_response
 
 

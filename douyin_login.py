@@ -9,7 +9,7 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from capture_page import ensure_cloakbrowser, positive_seconds
+from browser_setup import ensure_cloakbrowser, positive_seconds
 
 URL = "https://www.douyin.com/"
 DEFAULT_PHONE = "13657450350"

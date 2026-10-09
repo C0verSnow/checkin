@@ -2,7 +2,7 @@ name: Douyin login screenshots
 
 on:
   push:
-    branches: ['feature/issue-1-*']
+    branches: ['feature/*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -67,7 +67,7 @@ jobs:
           path: |
             output/douyin-login/
             douyin_login.py
-            capture_page.py
+            browser_setup.py
             requirements.txt
             README.md
           if-no-files-found: error

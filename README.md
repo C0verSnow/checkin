@@ -1,8 +1,8 @@
-# 抖音登录截图与搜索页保存
+# 抖音登录工具
 
 ## 新增：抖音登录二维码和短信结果截图
 
-`douyin_login.py` 使用 [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) 打开 `https://www.douyin.com/`，确认二维码图片可以解码后保存，直接把可编辑的区号输入框从 `+1` 改成 `+86` 并确认，再填入 issue #1 指定的手机号。安装依赖的方法见下方“在 Linux 使用”。
+`douyin_login.py` 使用 [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) 打开 `https://www.douyin.com/`，确认二维码图片可以解码后保存，直接把可编辑的区号输入框从 `+1` 改成 `+86` 并确认，再填入 issue #1 指定的手机号。安装依赖的方法见下方“安装”。
 
 ```bash
 # 只保存二维码、填入手机号和截图，不发送短信
@@ -36,58 +36,22 @@ GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR �
 - [登录流程测试](https://github.com/C0verSnow/checkin/actions/runs/37873384781)及[原有搜索页检查](https://github.com/C0verSnow/checkin/actions/runs/37873384838)均通过。
 - [此前实际点击发送的一轮](https://github.com/C0verSnow/checkin/actions/runs/37873074736)使用了正确的区号和手机号，但页面没有明确成功提示，报告为 `unknown`，该轮按预期返回失败。已经保存实际发送后截图，不能据此宣称短信已送达，也没有自动重试。
 
-## 用 CloakBrowser 保存可离线打开的搜索页
+## 安装
 
-两个 Python 入口脚本在 Linux 上打开“罗生门”搜索页，保存浏览器运行 JavaScript 后的页面，并把显示需要的 CSS、图片、SVG 和字体放进同一个 UTF-8 HTML 文件。把文件复制到 Windows、macOS 或 Linux 电脑，双击即可离线查看抓取时的页面。点击保存的视频链接会联网打开原网站。
-
-| 脚本 | 页面 | 默认输出 |
-| --- | --- | --- |
-| `douyin.py` | [抖音搜索](https://www.douyin.com/search/%E7%BD%97%E7%94%9F%E9%97%A8) | `output/douyin.html` |
-| `bilibili.py` | [B 站搜索](https://search.bilibili.com/all?keyword=%E7%BD%97%E7%94%9F%E9%97%A8) | `output/bilibili.html` |
-
-## 在 Linux 使用
-
-需要 Python 3.10 或更新版本，推荐 Ubuntu 24.04。请在仓库根目录运行：
+需要 Python 3.10 或更新版本，远端检查使用 Ubuntu 24.04：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-# 安装 Chromium 所需的 Linux 系统库；这一步可能需要 sudo。
 python -m playwright install-deps chromium
-python douyin.py
-python bilibili.py
+python douyin_login.py
 ```
 
-两个入口共用 `capture_page.py` 和 `offline_page.py`。首次运行会用当前 Python 的 pip 补装缺少的 CloakBrowser、Beautiful Soup、tinycss2 和 html5lib；已经安装就直接使用。CloakBrowser 启动时自动下载并缓存浏览器，需要能访问 PyPI 和浏览器下载站。安装和调用方法见 [CloakBrowser 官方说明](https://github.com/CloakHQ/CloakBrowser)。
+`browser_setup.py` 只提供浏览器导入和参数检查。请先安装依赖，程序不会自动运行 pip。首次启动 CloakBrowser 会下载浏览器，需要网络。
 
-默认无界面运行，不需要桌面环境。每次导航最多等 60 秒，页面加载后再等 15 秒，让 JavaScript 更新页面。可以修改保存位置和等待时间：
+## 仓库范围
 
-```bash
-python douyin.py --output output/custom-douyin.html --wait-seconds 30 --timeout-seconds 90
-python bilibili.py --output output/custom-bilibili.html --wait-seconds 30
-```
+按 issue #3 要求，此仓库只保留抖音登录相关脚本、说明和远端检查。抖音/B 站搜索页保存脚本、离线页面处理、相关依赖和工作流已删除。原有运行记录保留在 `tasklist.md`，输出不纳入 Git。
 
-## 打开保存的页面
-
-输出目录自动创建，同名 HTML 会覆盖。CSS 的嵌套引用、背景图片和字体一起保存；响应式图片保存浏览器当前选中的版本，外部 SVG 图标放进 HTML。下载时优先复用浏览器已加载的响应，缺少的资源用浏览器的 Cookie 和来源地址补抓。资源以内嵌数据形式保存，不需要资源文件夹或本地服务器。
-
-每个 HTML 旁边有一个同名的 `.resources.json` 报告，记录保存了多少资源和哪些资源失败。网站拒绝、网络超时或循环引用会打印提醒，失败的部分可能显示不完整，请查看报告并在网络正常时重试。HTML 停用原站脚本，避免打开后重新联网加载或跳回登录页。
-
-网站的 CSS 还可能引用其他页面或隐藏弹窗的图片。无法下载的图片如果没有用于抓取时任何可见元素或伪元素，会单独记在 `unavailable_unused_images` 中；当前页面需要的资源失败则记在 `failed_resources` 中。远端检查要求当前页面资源无失败、可见图片无损坏且没有外部请求。
-
-保存范围是等待结束时已加载的页面。没有滚动到的内容、之后才出现的弹窗、嵌入的其他网页以及视频流不在保存范围内；跨域图片画到 Canvas 后，浏览器也可能禁止导出。登录、继续搜索、播放视频等操作请在原网站完成。原页面中存在的正常视频链接会保留并转成完整网址。
-
-如果网站返回登录页、验证码或地区限制页，会保存当时的页面，不保证有搜索结果，也不自动登录或处理验证码。HTTP 400 以上的错误页保存供排查，同时脚本返回失败；安装、浏览器启动或导航失败也返回非零退出码。程序结束时关闭浏览器。
-
-## GitHub 上的 Linux 测试和下载
-
-`.github/workflows/capture.yml` 在 push、PR 和手动运行时执行：
-
-1. 测试自动安装、UTF-8 保存、超时清理、HTTP 错误处理、嵌套 CSS、字体、图片、SVG 和资源失败报告。
-2. 用真实 CloakBrowser 保存测试网页，再用一个新的、断网的浏览器通过 `file://` 打开文件，检查文字、CSS、伪元素、字体、背景图片、响应式图片、SVG 和视频链接，并确认没有 HTTP 请求。截图在 `offline-verification` 附件中。
-3. 分别运行抖音、B 站脚本，再断网打开两个真实网站的 HTML，检查资源失败、可见图片和外部请求，并保存截图。上传 `douyin-html` 和 `bilibili-html` 两个附件，包含 HTML、资源报告、打开检查报告和截图，保留 7 天。
-
-打开 **Actions → Linux HTML capture → 对应运行 → Artifacts** 下载并解压附件，双击 HTML 查看。两个网站分别运行，其中一个失败不会取消另一个；错误页也会上传。外部网站能否访问取决于网站和 GitHub runner 的网络。
-
-按仓库约定，不在本地进行构建、编译或会触发编译的测试。运行验证放在远端 Linux CI；执行过程和运行结果记录在 `tasklist.md`。
+按仓库约定，不做本地构建、编译或会触发编译的测试；验证放在 GitHub Actions 的 Linux 环境。
