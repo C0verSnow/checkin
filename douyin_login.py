@@ -168,7 +168,7 @@ def visible_feedback(page):
     return text
 
 
-def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, headed=False, url=URL):
+def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, headed=False, url=URL, recorder=None):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     # Remove old evidence so a failed run cannot inherit a successful screenshot.
@@ -182,6 +182,8 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
         browser = launch(headless=not headed, locale="zh-CN", timezone="Asia/Shanghai",
                          humanize=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        if recorder is not None:
+            recorder.attach(page)
         page.set_default_timeout(timeout_seconds * 1000)
         response = page.goto(url, wait_until="domcontentloaded")
         if response is None or response.status >= 400:
@@ -258,6 +260,9 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             report["status"] = "unknown"
             deadline = clicked_at + timeout_seconds
             while time.monotonic() < deadline:
+                if recorder is not None and recorder.sms is not None:
+                    report["status"] = "request_captured"
+                    break
                 text = visible_feedback(page)
                 feedback_button = visible(page.get_by_text(re.compile(r"\d+\s*(秒|s|S).{0,12}|重新发送|重新获取")))
                 button_text = feedback_button.inner_text() if feedback_button is not None else ""

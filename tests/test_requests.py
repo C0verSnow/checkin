@@ -1,0 +1,102 @@
+"""Remote-only tests: real browser capture -> real requests -> fixture HTTP API."""
+
+import base64
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
+import json
+from pathlib import Path
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+
+import qrcode
+
+from browser_setup import ensure_cloakbrowser
+from douyin_export import LoginRecorder
+from douyin_login import capture_login
+from douyin_requests import run, validate_transaction
+
+
+class RequestsTests(unittest.TestCase):
+    def test_reject_non_douyin_hosts(self):
+        for url in ['http://sso.douyin.com/x', 'https://douyin.com.evil.test/x',
+                    'https://example.com/x']:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                validate_transaction({'url': url, 'method': 'GET'})
+
+    def test_browser_export_and_requests_send_once(self):
+        png = BytesIO()
+        qrcode.make('https://example.com/api-login-fixture').save(png, format='PNG')
+        encoded = base64.b64encode(png.getvalue()).decode()
+        calls = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
+                <img id="qr" width="160" height="160"><h2>验证码登录</h2>
+                <input role="combobox" aria-label="国家/地区" value="+1">
+                <input placeholder="请输入手机号"><input type="checkbox">
+                <button onclick="fetch('/send_code/?signature=fixture', {method:'POST',
+                    headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'mobile=fixture%2Bphone'})">发送验证码</button>
+                <script>fetch('/get_qrcode/?signature=fixture').then(r=>r.json()).then(r=>{
+                  document.querySelector('#qr').src='data:image/png;base64,'+r.data.qrcode;
+                });</script>''', encoding='utf-8')
+
+            class Handler(SimpleHTTPRequestHandler):
+                def log_message(self, *args):
+                    pass
+                def respond(self, payload):
+                    body = json.dumps(payload).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                def do_GET(self):
+                    if self.path.startswith('/get_qrcode/'):
+                        self.respond({'data': {'qrcode': encoded}})
+                    else:
+                        super().do_GET()
+                def do_POST(self):
+                    body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                    calls.append((self.path, body))
+                    self.respond({'data': {'error_code': 0, 'description': 'success'}})
+
+            server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=directory))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                recorder = LoginRecorder()
+                report = capture_login(ensure_cloakbrowser().launch, '13657450350', root/'browser',
+                    True, 5, url=f'http://127.0.0.1:{server.server_port}/index.html', recorder=recorder)
+                self.assertEqual(report['status'], 'request_captured', report)
+                self.assertTrue(report['qr_saved'])
+                self.assertTrue(recorder.qr)
+                self.assertTrue(recorder.sms)
+                self.assertEqual(calls, [], 'browser must not send SMS')
+                bundle = root / 'request-bundle.json'
+                recorder.save(bundle)
+                self.assertEqual(bundle.stat().st_mode & 0o777, 0o600)
+                # Only fixtures can use localhost; production strictly checks Douyin HTTPS.
+                with patch('douyin_requests.validate_transaction'):
+                    result = run(bundle, root/'api', False, 5)
+                    self.assertEqual(result['status'], 'not_requested', result)
+                    self.assertEqual(calls, [])
+                    result = run(bundle, root/'api', True, 5)
+                    self.assertEqual(result['status'], 'request_accepted', result)
+                    self.assertEqual(calls, [('/send_code/?signature=fixture', b'mobile=fixture%2Bphone')])
+                    result = run(bundle, root/'second', True, 5)
+                    self.assertEqual(result['status'], 'error')
+                    self.assertEqual(result['error_type'], 'FileExistsError')
+                    self.assertEqual(len(calls), 1)
+                self.assertTrue((root/'api/api-login-qr.png').read_bytes().startswith(b'\x89PNG'))
+                self.assertTrue((root/'api/api-result.png').read_bytes().startswith(b'\x89PNG'))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+
+if __name__ == '__main__':
+    unittest.main()
