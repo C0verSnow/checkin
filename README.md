@@ -2,7 +2,7 @@
 
 ## 新增：抖音登录二维码和短信结果截图
 
-`douyin_login.py` 使用 [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) 打开 `https://www.douyin.com/`，确认二维码图片可以解码后保存，再填入 issue #1 指定的手机号。安装依赖的方法见下方“在 Linux 使用”。
+`douyin_login.py` 使用 [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) 打开 `https://www.douyin.com/`，确认二维码图片可以解码后保存，切换并确认中国大陆 `+86` 区号，再填入 issue #1 指定的手机号。安装依赖的方法见下方“在 Linux 使用”。
 
 ```bash
 # 只保存二维码、填入手机号和截图，不发送短信

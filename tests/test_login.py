@@ -31,7 +31,9 @@ class LoginTests(unittest.TestCase):
             qrcode.make('https://example.com/login-fixture').save(root / 'image.png')
             (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
                 <img src="image.png" width="160" height="160"><h2>验证码登录</h2>
-                <input placeholder="请输入手机号"><input type="checkbox" aria-label="同意协议">
+                <div><button id="country" onclick="document.querySelector('#countries').hidden=false">+1</button>
+                <div id="countries" hidden><span onclick="document.querySelector('#country').textContent='+86'; document.querySelector('#countries').hidden=true">+86</span></div>
+                <input placeholder="请输入手机号"></div><input type="checkbox" aria-label="同意协议">
                 <button onclick="if (!document.querySelector('input[type=checkbox]').checked) return;
                 window.clicks++; this.textContent='59秒后重新发送';
                 document.querySelector('#feedback').textContent=new URLSearchParams(location.search).get('feedback');">发送验证码</button>
@@ -58,6 +60,7 @@ class LoginTests(unittest.TestCase):
                             def close(self):
                                 evidence['clicks'] = self.page.evaluate('window.clicks')
                                 evidence['phone'] = self.page.locator('input[placeholder]').input_value()
+                                evidence['country'] = self.page.locator('#country').inner_text()
                                 self.browser.close()
                         def wrapped_launch(**kwargs):
                             return WrappedBrowser(launch(**kwargs))
@@ -66,7 +69,7 @@ class LoginTests(unittest.TestCase):
                             url=f'http://127.0.0.1:{server.server_port}/index.html?{urlencode({"feedback": feedback})}')
                         self.assertEqual(report['status'], expected, report)
                         self.assertTrue(report['qr_saved'])
-                        self.assertEqual(evidence, {'clicks': 1, 'phone': '13657450350'})
+                        self.assertEqual(evidence, {'clicks': 1, 'phone': '13657450350', 'country': '+86'})
                         self.assertEqual(json.loads((output/'result.json').read_text())['status'], expected)
                         for name in ('login-qr.png', 'before-send.png', 'sms-result.png'):
                             self.assertTrue((output/name).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))

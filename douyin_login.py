@@ -29,6 +29,31 @@ def phone_field(page):
     return visible(page.get_by_placeholder(re.compile("手机号|手机号码")))
 
 
+def select_china_country(page, field):
+    """The overseas runner defaults to +1; never send until +86 is selected."""
+    country_pattern = re.compile(r"^\+\s*\d{1,4}$")
+    row = field
+    country = None
+    for _ in range(5):
+        row = row.locator("xpath=..")
+        country = visible(row.get_by_text(country_pattern, exact=True))
+        if country is not None:
+            break
+    if country is None:
+        raise RuntimeError("没有找到手机号区号，不能确认收件号码")
+    if re.sub(r"\s", "", country.inner_text()) != "+86":
+        country.click()
+        option = page.get_by_text(re.compile(r"^\+\s*86$"), exact=True)
+        option.first.wait_for()
+        choice = visible(option)
+        if choice is None:
+            raise RuntimeError("没有找到中国大陆 +86 选项")
+        choice.click()
+    selected = visible(row.get_by_text(country_pattern, exact=True))
+    if selected is None or re.sub(r"\s", "", selected.inner_text()) != "+86":
+        raise RuntimeError("中国大陆 +86 区号没有选中，停止发送")
+
+
 def open_login(page):
     if phone_field(page) is not None or visible(page.get_by_text("扫码登录", exact=True)) is not None:
         return
@@ -125,6 +150,8 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             field = phone_field(page)
         if field is None:
             raise RuntimeError("没有找到手机号输入框")
+        select_china_country(page, field)
+        report["country_code"] = "+86"
         field.fill(phone)
         # Agree to the login terms only in the visible phone form when required.
         checkbox = visible(page.get_by_role("checkbox"))
