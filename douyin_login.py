@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import sys
 import time
+from urllib.parse import urlsplit
 
 from capture_page import ensure_cloakbrowser, positive_seconds
 
@@ -108,14 +109,66 @@ def sms_result(text, button_text=""):
     return "unknown"
 
 
+def sms_endpoint(url):
+    return bool(re.search(r"send[_/-]?(?:activation[_/-]?|verification[_/-]?)?(?:code|sms)|sms[/_-]send", urlsplit(url).path, re.I))
+
+
+def summarize_sms_response(response):
+    """Keep only outcome fields, never cookies, response tokens or URL queries."""
+    endpoint = urlsplit(response.url)
+    summary = {"endpoint": endpoint.scheme + "://" + endpoint.netloc + endpoint.path,
+               "http_status": response.status, "status": "unknown"}
+    try:
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("短信接口没有返回 JSON 对象")
+        data = payload.get("data")
+        data = data if isinstance(data, dict) else {}
+        for key in ("error_code", "status_code", "code"):
+            value = data.get(key, payload.get(key))
+            if value is not None:
+                summary["code"] = value
+                break
+        message = data.get("description") or data.get("message") or payload.get("description") or payload.get("message") or ""
+        summary["message"] = str(message)[:300]
+        if data.get("verify_center_decision_conf") or re.search(r"验证|滑块|captcha|verification|verify", summary["message"], re.I):
+            summary["status"] = "verification_required"
+        elif response.status >= 400:
+            summary["status"] = "failed"
+        elif "code" in summary:
+            if type(summary["code"]) is int and summary["code"] == 0 and 200 <= response.status < 300:
+                summary["status"] = "request_accepted"
+            elif summary["code"] not in (0, "0"):
+                summary["status"] = "failed"
+    except Exception as exc:
+        summary["read_error"] = str(exc)
+        if response.status >= 400:
+            summary["status"] = "failed"
+    return summary
+
+
+def visible_feedback(page):
+    text = page.locator("body").inner_text()
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            if frame.frame_element().is_visible():
+                text += "\n" + frame.locator("body").inner_text(timeout=500)
+        except Exception:
+            # Detached or unloaded frames cannot provide feedback.
+            continue
+    return text
+
+
 def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, headed=False, url=URL):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     # Remove old evidence so a failed run cannot inherit a successful screenshot.
-    for name in ("login.png", "login-qr.png", "before-send.png", "sms-result.png", "result.json"):
+    for name in ("login.png", "login-qr.png", "before-send.png", "after-click.png", "sms-result.png", "result.json"):
         (output / name).unlink(missing_ok=True)
     report = {"time_utc": datetime.now(timezone.utc).isoformat(), "phone": phone,
-              "status": "not_requested", "send_clicked": False, "qr_saved": False}
+              "status": "not_requested", "send_attempted": False, "send_clicked": False, "qr_saved": False, "sms_responses": []}
     browser = None
     page = None
     try:
@@ -153,18 +206,45 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             raise RuntimeError("没有找到发送验证码按钮")
         page.screenshot(path=str(output / "before-send.png"), full_page=True)
         if send_code:
+            def on_response(response):
+                if sms_endpoint(response.url) and response.request.method == "POST":
+                    report["sms_responses"].append(summarize_sms_response(response))
+            page.on("response", on_response)
+            send.evaluate("""el => {
+                window.__checkinSendClick = null;
+                document.addEventListener('click', event => {
+                    window.__checkinSendClick = {trusted: event.isTrusted,
+                        matched: el === event.target || el.contains(event.target),
+                        target_text: (event.target.textContent || '').trim().slice(0, 100)};
+                }, {capture: true, once: true});
+            }""")
             # Exactly one click; do not retry SMS requests on ambiguous feedback.
-            report["send_clicked"] = True
+            report["send_attempted"] = True
             send.click()
+            report["click_event"] = page.evaluate("() => window.__checkinSendClick")
+            report["send_clicked"] = bool(report["click_event"] and report["click_event"]["matched"] and report["click_event"]["trusted"])
+            if not report["send_clicked"]:
+                raise RuntimeError("没有确认到发送按钮的真实点击事件，保留现场，不再点击")
             report["status"] = "unknown"
-            deadline = time.monotonic() + timeout_seconds
+            clicked_at = time.monotonic()
+            page.wait_for_timeout(250)
+            page.screenshot(path=str(output / "after-click.png"), full_page=True)
+            deadline = clicked_at + timeout_seconds
             while time.monotonic() < deadline:
-                text = page.locator("body").inner_text()
+                text = visible_feedback(page)
                 feedback_button = visible(page.get_by_text(re.compile(r"\d+\s*(秒|s|S).{0,12}|重新发送|重新获取")))
                 button_text = feedback_button.inner_text() if feedback_button is not None else ""
                 status = sms_result(text, button_text)
-                report.update(status=status, page_text=text, button_text=button_text)
+                if status not in {"sent", "failed", "verification_required"}:
+                    for result in report["sms_responses"]:
+                        if result["status"] != "unknown":
+                            status = result["status"]
+                            if status in {"failed", "verification_required"}:
+                                break
+                report.update(status=status, feedback_text=text, button_text=button_text)
                 if status in {"sent", "failed", "verification_required"}:
+                    break
+                if status == "request_accepted" and time.monotonic() - clicked_at >= 2:
                     break
                 page.wait_for_timeout(250)
         return report
@@ -205,9 +285,9 @@ def main(argv=None):
     except Exception as exc:
         print(f"浏览器准备失败：{exc}", file=sys.stderr)
         return 1
-    print(json.dumps({key: value for key, value in report.items() if key not in {"page_text", "form_controls"}}, ensure_ascii=False, indent=2))
+    print(json.dumps({key: value for key, value in report.items() if key not in {"page_text", "feedback_text", "form_controls"}}, ensure_ascii=False, indent=2))
     print(f"截图和报告：{args.output_dir.resolve()}")
-    return 0 if report["qr_saved"] and report["status"] in {"sent", "not_requested"} else 1
+    return 0 if report["qr_saved"] and report["status"] in {"sent", "request_accepted", "not_requested"} else 1
 
 
 if __name__ == "__main__":

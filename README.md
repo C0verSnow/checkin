@@ -20,10 +20,11 @@ python douyin_login.py --send-code --output-dir output/douyin-login --timeout-se
 | `login.png` | 登录页面全图 |
 | `login-qr.png` | 登录二维码单独截图 |
 | `before-send.png` | 填好手机号后的页面 |
+| `after-click.png` | 点击后立即保存的页面，保留短暂提示 |
 | `sms-result.png` | 点击后的页面，失败时也是实际现场 |
 | `result.json` | 时间、手机号、是否点击、结果和页面提示 |
 
-只在页面明确显示验证码已发送时，报告才写 `sent`。仅出现倒计时写 `countdown_only`，不能证明短信已送到手机；安全验证写 `verification_required`，发送失败写 `failed`，其他情况写 `unknown` 或 `error`，均返回非零退出码。脚本不填写收到的验证码、不处理安全验证，也不会自动重试发送短信。二维码未加载时保存现场并停止，不继续发送。每次运行清理该目录内的旧截图，避免把上次结果当成本次结果。
+只在页面明确显示验证码已发送时，报告才写 `sent`。短信接口明确返回成功时写 `request_accepted`，表示服务器已接受请求，不能证明手机已收到短信；此状态返回零退出码。HTTP 200 本身不算成功。报告只保留接口地址（去掉查询参数）、HTTP 状态、结果码和提示，不保存接口令牌或 Cookie。脚本记录按钮的真实点击事件，并检查可见嵌入窗口里的安全验证提示。仅出现倒计时写 `countdown_only`，不能证明短信已送到手机；安全验证写 `verification_required`，发送失败写 `failed`，其他情况写 `unknown` 或 `error`，均返回非零退出码。脚本不填写收到的验证码、不处理安全验证，也不会自动重试发送短信。二维码未加载时保存现场并停止，不继续发送。每次运行清理该目录内的旧截图，避免把上次结果当成本次结果。
 
 GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR 时用真实 CloakBrowser 检查测试页面，覆盖成功、失败、安全验证、只有倒计时和只截图五种情况。测试页面不会访问抖音或发送短信。实际抖音截图只在手动运行时执行：选择 feature 分支，勾选 `send_code` 才点击一次发送。附件 `douyin-login` 提供实际 PNG、结果报告及 Python 脚本，保留 7 天。截图含手机号与当时的登录二维码，请按实际需要保存附件。网站可访问性和发送结果取决于抖音与 runner 网络，不能把测试页面通过当成真实短信发送成功。
 
