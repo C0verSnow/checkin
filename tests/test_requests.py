@@ -32,7 +32,7 @@ class RequestsTests(unittest.TestCase):
                 item = {'url': 'https://sso.douyin.com/passport/web/get_qrcode/',
                         'method': 'GET', 'headers': {}, 'body_base64': ''}
                 bundle = root / 'request-bundle.json'
-                bundle.write_text(json.dumps({'version': 1, 'qr': item,
+                bundle.write_text(json.dumps({'version': 1, 'sms_attempted': False, 'qr': item,
                     'sms': dict(item, url='https://sso.douyin.com/passport/web/send_code/', method='POST')}))
                 qr = Mock(status_code=200, headers={'Content-Type': 'image/png'}, content=png.getvalue())
                 sms = Mock(status_code=200, url='https://sso.douyin.com/passport/web/send_code/')
@@ -61,7 +61,7 @@ class RequestsTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 validate_transaction({'url': url, 'method': 'GET'})
 
-    def test_browser_export_and_requests_send_once(self):
+    def test_browser_sends_once_and_requests_only_verifies_qr(self):
         png = BytesIO()
         qrcode.make('https://example.com/api-login-fixture').save(png, format='PNG')
         encoded = base64.b64encode(png.getvalue()).decode()
@@ -105,13 +105,15 @@ class RequestsTests(unittest.TestCase):
                 recorder = LoginRecorder()
                 report = capture_login(ensure_cloakbrowser().launch, '13657450350', root/'browser',
                     True, 5, headed=True, url=f'http://127.0.0.1:{server.server_port}/index.html', recorder=recorder)
-                self.assertEqual(report['status'], 'request_captured', report)
+                self.assertEqual(report['status'], 'request_accepted', report)
+                self.assertEqual(report['sms_response_state'], 'completed')
                 self.assertTrue(report['qr_saved'])
                 self.assertEqual(report['country_code'], '+86')
                 self.assertEqual(report['country_selection']['reason'], 'input_edited')
                 self.assertTrue(recorder.qr)
                 self.assertTrue(recorder.sms)
-                self.assertEqual(calls, [], 'browser must not send SMS')
+                self.assertEqual(len(calls), 1, 'browser sends exactly one request')
+                self.assertTrue(recorder.sms_attempted)
                 bundle = root / 'request-bundle.json'
                 recorder.save(bundle)
                 self.assertEqual(bundle.stat().st_mode & 0o777, 0o600)
@@ -119,14 +121,13 @@ class RequestsTests(unittest.TestCase):
                 with patch('douyin_requests.validate_transaction'):
                     result = run(bundle, root/'api', False, 5)
                     self.assertEqual(result['status'], 'not_requested', result)
-                    self.assertEqual(calls, [])
-                    result = run(bundle, root/'api', True, 5)
-                    self.assertEqual(result['status'], 'request_accepted', result)
-                    self.assertEqual(calls, [('/send_code/?signature=fixture', b'mobile=fixture%2Bphone')])
+                    self.assertEqual(len(calls), 1)
+                    self.assertTrue(json.loads(bundle.read_text())['sms_attempted'])
                     result = run(bundle, root/'second', True, 5)
                     self.assertEqual(result['status'], 'error')
-                    self.assertEqual(result['error_type'], 'FileExistsError')
-                    self.assertEqual(len(calls), 1)
+                    self.assertEqual(result['error_type'], 'ValueError')
+                    self.assertFalse(result['sms_attempted'])
+                    self.assertEqual(calls, [('/send_code/?signature=fixture', b'mobile=fixture%2Bphone')])
                 self.assertTrue((root/'api/api-login-qr.png').read_bytes().startswith(b'\x89PNG'))
                 self.assertTrue((root/'api/api-result.png').read_bytes().startswith(b'\x89PNG'))
             finally:

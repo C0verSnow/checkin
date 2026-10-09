@@ -100,6 +100,8 @@ def run(bundle_path, output, send_code=False, timeout=60, session=None):
         report["qr_saved"] = True
         report["status"] = "not_requested"
         if send_code:
+            if bundle.get("sms_attempted") is not False:
+                raise ValueError("浏览器已尝试发送短信或发送记录不明确，不能再用 requests 发送")
             validate_transaction(bundle.get("sms"))
             if bundle["sms"]["method"] != "POST":
                 raise ValueError("短信请求必须是 POST")

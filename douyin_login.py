@@ -241,7 +241,7 @@ def observe_sms_requests(page, report, recorder=None):
 
     def on_failed(request):
         if request in pending:
-            pending.pop(request)["state"] = "blocked" if recorder is not None else "network_error"
+            pending.pop(request)["state"] = "network_error"
 
     # Context events also cover requests initiated by embedded frames.
     page.context.on("request", on_request)
@@ -354,9 +354,6 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             report["status"] = "unknown"
             deadline = clicked_at + timeout_seconds
             while time.monotonic() < deadline:
-                if recorder is not None and recorder.sms is not None:
-                    report["status"] = "request_captured"
-                    break
                 text = visible_feedback(page)
                 feedback_button = visible(page.get_by_text(re.compile(r"\d+\s*(秒|s|S).{0,12}|重新发送|重新获取")))
                 button_text = feedback_button.inner_text() if feedback_button is not None else ""

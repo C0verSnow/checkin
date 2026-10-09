@@ -70,7 +70,7 @@ class SmsResponseTests(unittest.TestCase):
                 self.assertEqual(result['reason'], 'rate_limited')
 
     def test_observer_reads_finished_bodies_and_distinguishes_aborts(self):
-        for recorder, failed_state in [(None, 'network_error'), (Mock(), 'blocked')]:
+        for recorder, failed_state in [(None, 'network_error'), (Mock(), 'network_error')]:
             page = Mock()
             report = {'send_attempted': False, 'sms_responses': []}
             pending = observe_sms_requests(page, report, recorder)

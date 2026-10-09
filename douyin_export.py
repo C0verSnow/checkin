@@ -1,4 +1,4 @@
-"""Export actual signed login requests; browser SMS traffic is always aborted."""
+"""Record actual signed login requests and browser SMS responses without interception."""
 
 import argparse
 import json
@@ -25,24 +25,20 @@ class LoginRecorder:
     def __init__(self):
         self.sms = None
         self.qr = None
-        self.blocked_sms = 0
+        self.sms_attempted = False
         self.errors = []
 
     def attach(self, page):
-        def route_request(route):
-            request = route.request
-            if sms_endpoint(request.url):
-                # Block every matching request, including automatic page retries.
-                self.blocked_sms += 1
+        def request_sent(request):
+            if sms_endpoint(request.url) and request.method == "POST":
+                # Mark attempted before reading private request data. A failed
+                # capture or network error must never permit a second send.
+                self.sms_attempted = True
                 try:
-                    if self.sms is None and request.method == "POST":
+                    if self.sms is None:
                         self.sms = transaction(request)
                 except Exception as exc:
                     self.errors.append(type(exc).__name__)
-                finally:
-                    route.abort()
-            else:
-                route.continue_()
 
         def response_received(response):
             if "get_qrcode" in urlsplit(response.url).path:
@@ -51,7 +47,7 @@ class LoginRecorder:
                 except Exception as exc:
                     self.errors.append(type(exc).__name__)
 
-        page.context.route("**/*", route_request)
+        page.context.on("request", request_sent)
         page.on("response", response_received)
 
     def save(self, path):
@@ -62,14 +58,15 @@ class LoginRecorder:
         os.chmod(path, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump({"version": 1, "qr": self.qr, "sms": self.sms,
-                       "sms_attempted": False}, stream, ensure_ascii=False, indent=2)
+                       "sms_attempted": self.sms_attempted}, stream, ensure_ascii=False, indent=2)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="捕获抖音登录请求，拦截浏览器短信请求，供 requests 重放")
+    parser = argparse.ArgumentParser(description="记录抖音登录请求和浏览器短信返回，供 requests 验证二维码")
     parser.add_argument("--phone", required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("output/douyin-api"))
-    parser.add_argument("--capture-sms", action="store_true", help="点击一次以捕获请求，浏览器请求会被拦截")
+    parser.add_argument("--send-code", "--capture-sms", dest="send_code", action="store_true",
+                        help="浏览器点击一次实际发送短信并记录返回，不拦截；旧参数 --capture-sms 含义相同")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--timeout-seconds", type=positive_seconds, default=60)
     args = parser.parse_args(argv)
@@ -80,17 +77,17 @@ def main(argv=None):
     bundle.unlink(missing_ok=True)
     recorder = LoginRecorder()
     report = capture_login(ensure_cloakbrowser().launch, args.phone, args.output_dir,
-                           args.capture_sms, args.timeout_seconds, args.headed, recorder=recorder)
+                           args.send_code, args.timeout_seconds, args.headed, recorder=recorder)
     recorder.save(bundle)
     result = {"qr_request_captured": recorder.qr is not None,
               "sms_request_captured": recorder.sms is not None,
-              "blocked_browser_sms": recorder.blocked_sms,
+              "browser_sms_attempted": recorder.sms_attempted,
               "browser_status": report["status"], "capture_errors": recorder.errors}
     (args.output_dir / "export-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
-    expected_status = "request_captured" if args.capture_sms else "not_requested"
+    expected_status = "request_accepted" if args.send_code else "not_requested"
     return 0 if (report["status"] == expected_status and report["qr_saved"] and recorder.qr
-                 and (not args.capture_sms or recorder.sms)) else 1
+                 and (not args.send_code or recorder.sms)) else 1
 
 
 if __name__ == "__main__":
