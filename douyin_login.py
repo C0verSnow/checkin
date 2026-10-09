@@ -13,7 +13,7 @@ from browser_setup import ensure_cloakbrowser, positive_seconds
 
 URL = "https://www.douyin.com/"
 DEFAULT_PHONE = "13657450350"
-COUNTRY_CODE = "+1"
+COUNTRY_CODE = "+86"
 SEND_TEXT = re.compile(r"^(发送验证码|获取验证码)$")
 QR_SELECTOR = 'img, canvas, div'
 DOM_HELPERS = Path(__file__).with_name("douyin_dom.js").read_text(encoding="utf-8")

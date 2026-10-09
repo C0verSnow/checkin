@@ -13,7 +13,7 @@ class SmsResponseTests(unittest.TestCase):
         field = Mock()
         field.evaluate.return_value = False
         with self.assertRaisesRegex(RuntimeError, '没有获得焦点'):
-            type_input(page, field, '+1')
+            type_input(page, field, '+86')
         page._original.keyboard_press.assert_not_called()
         page._original.keyboard_type.assert_not_called()
         field.focus.assert_not_called()
@@ -22,11 +22,11 @@ class SmsResponseTests(unittest.TestCase):
         page = Mock()
         country = Mock()
         country.evaluate.return_value = True
-        country.input_value.side_effect = ['+1', '+86']
+        country.input_value.side_effect = ['+86', '+1']
         with patch('douyin_login.visible', return_value=country):
-            with self.assertRaisesRegex(RuntimeError, '没有保持为 \\+1'):
+            with self.assertRaisesRegex(RuntimeError, '没有保持为 \\+86'):
                 edit_country_code(page, {})
-        page._original.keyboard_type.assert_called_once_with('+1', delay=80)
+        page._original.keyboard_type.assert_called_once_with('+86', delay=80)
         page._original.keyboard_press.assert_any_call('Tab')
 
 

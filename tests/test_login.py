@@ -65,9 +65,9 @@ class LoginTests(unittest.TestCase):
             qrcode.make('https://example.com/login-fixture').save(root / 'image.png')
             (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
                 <img src="image.png" width="160" height="160"><h2>验证码登录</h2>
-                <div><input role="combobox" aria-label="国家/地区" name="web-login-area-code-input" id="country" value="+86">
+                <div><input role="combobox" aria-label="国家/地区" name="web-login-area-code-input" id="country" value="+1">
                 <input placeholder="请输入手机号"></div><input type="checkbox" aria-label="同意协议">
-                <button onclick="if (!document.querySelector('input[type=checkbox]').checked || document.querySelector('#country').value !== '+1') return;
+                <button onclick="if (!document.querySelector('input[type=checkbox]').checked || document.querySelector('#country').value !== '+86') return;
                 window.clicks++; this.textContent='59秒后重新发送';
                 const outcome=new URLSearchParams(location.search).get('feedback');
                 if (outcome==='api_delayed_failure' || outcome==='api_delayed_timeout') document.querySelector('#feedback').textContent='验证码已发送';
@@ -137,7 +137,7 @@ class LoginTests(unittest.TestCase):
                             self.assertEqual(report['sms_responses'][0]['reason'], 'rate_limited')
                         if feedback == 'api_delayed_failure':
                             self.assertEqual(report['ui_status'], 'sent')
-                        self.assertEqual(evidence, {'clicks': 1, 'phone': '13657450350', 'country': '+1'})
+                        self.assertEqual(evidence, {'clicks': 1, 'phone': '13657450350', 'country': '+86'})
                         self.assertEqual(json.loads((output/'result.json').read_text())['status'], expected)
                         for name in ('login-qr.png', 'before-send.png', 'after-click.png', 'sms-result.png'):
                             self.assertTrue((output/name).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
