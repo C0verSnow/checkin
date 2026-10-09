@@ -1,8 +1,17 @@
-# 抖音登录接口与截图
+# 抖音登录请求转 requests 与接口二维码
+
+issue #3 的交付流程是：用 CloakBrowser 运行登录页面并记录网站生成的接口请求，再由独立 Python requests 脚本调用二维码接口，将真实返回的二维码图片保存为 PNG。默认流程不发送短信。Python 脚本和真实 PNG 可从手动远端流程的 `douyin-login` 附件一起下载。
+
+```text
+douyin_export.py（CloakBrowser 记录签名请求）
+  → request-bundle.json（私密输入，不上传）
+  → douyin_requests.py（Python requests 调用二维码接口）
+  → api-login-qr.png + api-result.json + api-result.png
+```
 
 仓库保留抖音登录相关 Python 和 JavaScript 脚本。`douyin_export.py` 使用 CloakBrowser 登录页面：先直接把可编辑区号框从 `+1` 改成 `+86`，再填手机号，按需点击一次“获取验证码”，记录网站生成的请求和接口返回。浏览器短信不拦截。
 
-按 issue #3，`douyin_export.py` 通过 CloakBrowser 记录网站生成的签名请求，`douyin_requests.py` 用 Python requests 原样调用接口，保存真实接口二维码，并在明确加 `--send-code` 时发送一次验证码。网站签名、Cookie 和风控可能使请求失效；脚本不自动重试，也不代过安全验证。
+`douyin_export.py` 通过 CloakBrowser 记录网站生成的签名请求，`douyin_requests.py` 用 Python requests 原样调用接口，保存真实接口二维码。仓库还保留明确加 `--send-code` 时发送一次验证码的可选能力；这不是最新 issue #3 的验收要求。网站签名、Cookie 和风控可能使请求失效；脚本不自动重试，也不代过安全验证。
 
 ## 安装
 
@@ -19,10 +28,14 @@ python -m playwright install-deps chromium
 
 ## 只保存二维码，不发送短信
 
+这是 issue #3 的默认用法。两条命令连续运行，避免捕获的签名和会话过期：
+
 ```bash
 python douyin_export.py --phone 13657450350
 python douyin_requests.py --bundle output/douyin-api/request-bundle.json
 ```
+
+转换工具是 `douyin_export.py`：它监听真实浏览器请求，记录方法、完整签名 URL、请求头和原始请求体，供 `douyin_requests.py` 使用。requests 入口运行时不启动浏览器；更换账号或请求失效后需要重新捕获。浏览器二维码截图扫描支持图片、canvas 和 SVG；只有可解码的二维码才保存。
 
 ## 记录浏览器请求，再用 requests 发送一次并读取接口返回
 
@@ -61,6 +74,6 @@ python douyin_requests.py --bundle output/douyin-api/request-bundle.json --send-
 
 GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR 时运行真实 CloakBrowser 测试，覆盖区号编辑、延迟返回、限流、安全验证、浏览器发送一次、requests 只验证二维码，以及明确开启 requests 短信调用后拒绝重复运行。测试接口不会访问抖音或发送真实短信。
 
-手动流程的 `phone` 填写已获准使用的完整号码，默认只验证二维码；勾选 `send_code` 后浏览器实际点击一次发送并记录请求，随后 requests 额外发送一次并保存二维码；流程按 requests 的二维码和短信结果判断成功。浏览器失败会保留实际结果，不阻止已捕获的请求由 requests 独立验证。附件 `douyin-login` 包含 PNG、去除敏感请求信息的报告和 Python/JavaScript 脚本，保留 7 天。
+手动运行 **Douyin login screenshots**，选择 feature 分支，保持 `send_code=false`，即可验证 issue #3 的二维码流程；`phone` 只用于浏览器表单准备，不点击发送。勾选 `send_code` 后浏览器实际点击一次发送并记录请求，随后 requests 额外发送一次并保存二维码；这是额外的短信模式。流程按 requests 的二维码结果及所选模式判断成功。浏览器失败会保留实际结果，不阻止已捕获的请求由 requests 独立验证。附件 `douyin-login` 包含 PNG、去除敏感请求信息的报告和 Python/JavaScript 脚本，保留 7 天。
 
-按仓库约定，不进行本地构建、编译或会触发编译的测试。过程和远端结果记录在 `tasklist.md`。真实验证使用 issue 指定的 `+86 13657450350`，不自动替换手机号或重试发送。
+按仓库约定，不进行本地构建、编译或会触发编译的测试。过程和远端结果记录在 `tasklist.md`。issue #3 真实验收只保存二维码，不发送短信；可选短信模式使用已获准接收短信的号码，不自动替换手机号或重试发送。

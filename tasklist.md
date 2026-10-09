@@ -22,6 +22,9 @@
 - 第二轮红灯已确认：提交 42f1f13 的远端测试 https://github.com/C0verSnow/checkin/actions/runs/37949798873 ，SVG 二维码场景失败，其余 12 个测试通过。
 - 已沿用此前确认的浏览器登录入口和 requests 接口入口两个测试范围；没有新增测试范围。
 - 已做最小修复：二维码候选扫描加入 SVG，仍以真实截图可解码为准。
+- 修复已提交并推送到 feature 分支，提交为 d405362；README 已明确最新 issue 的默认二维码流程和 PNG/Python 附件。
+- 已启动不发送短信的真实验证 https://github.com/C0verSnow/checkin/actions/runs/37950918119 ，先运行完整测试，再用 requests 调用真实二维码接口。
+- 本次 Python 静态语法检查和 git diff --check 通过；没有运行本地项目代码或测试。
 
 ## 没做：
 - 没有进行本地构建、编译或运行测试。
