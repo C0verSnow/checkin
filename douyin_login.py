@@ -80,6 +80,16 @@ def save_qr(page, output, timeout_seconds):
     panel = heading.locator("xpath=ancestor::*[contains(., '验证码登录')][1]")
     if not panel.count():
         raise RuntimeError("没有找到同时包含扫码和验证码登录的弹窗")
+    # Newer layouts put both headings in a short tab row while the QR is
+    # its sibling. Walk up to the visible content panel before scanning.
+    for _ in range(10):
+        box = panel.bounding_box()
+        if box and box["height"] >= 200:
+            break
+        parent = panel.locator("xpath=..")
+        if not parent.count():
+            break
+        panel = parent
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         candidates = panel.locator(QR_SELECTOR)
@@ -92,7 +102,9 @@ def save_qr(page, output, timeout_seconds):
                 continue
             if not 0.8 <= box["width"] / box["height"] <= 1.2:
                 continue
-            png = candidate.screenshot(timeout=5000)
+            # Use viewport coordinates, like the full-page evidence, instead
+            # of locator content quads which may differ in CloakBrowser.
+            png = page.screenshot(clip=box, timeout=5000)
             codes = zxingcpp.read_barcodes(Image.open(BytesIO(png)), formats=zxingcpp.BarcodeFormat.QRCode)
             if codes:
                 (output / "login-qr.png").write_bytes(png)
