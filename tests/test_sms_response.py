@@ -2,9 +2,9 @@
 
 import json
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from douyin_login import observe_sms_requests, summarize_sms_response, type_input
+from douyin_login import edit_country_code, observe_sms_requests, summarize_sms_response, type_input
 
 
 class SmsResponseTests(unittest.TestCase):
@@ -13,10 +13,22 @@ class SmsResponseTests(unittest.TestCase):
         field = Mock()
         field.evaluate.return_value = False
         with self.assertRaisesRegex(RuntimeError, '没有获得焦点'):
-            type_input(page, field, '+86')
+            type_input(page, field, '+1')
         page._original.keyboard_press.assert_not_called()
         page._original.keyboard_type.assert_not_called()
         field.focus.assert_not_called()
+
+    def test_country_code_reverting_after_blur_stops_the_flow(self):
+        page = Mock()
+        country = Mock()
+        country.evaluate.return_value = True
+        country.input_value.side_effect = ['+1', '+86']
+        with patch('douyin_login.visible', return_value=country):
+            with self.assertRaisesRegex(RuntimeError, '没有保持为 \\+1'):
+                edit_country_code(page, {})
+        page._original.keyboard_type.assert_called_once_with('+1', delay=80)
+        page._original.keyboard_press.assert_any_call('Tab')
+
 
     def test_business_errors_override_success_and_sensitive_fields_are_not_saved(self):
         cases = [

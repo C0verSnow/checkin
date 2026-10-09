@@ -88,7 +88,9 @@ def main(argv=None):
               "browser_status": report["status"], "capture_errors": recorder.errors}
     (args.output_dir / "export-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
-    return 0 if report["qr_saved"] and recorder.qr and (not args.capture_sms or recorder.sms) else 1
+    expected_status = "request_captured" if args.capture_sms else "not_requested"
+    return 0 if (report["status"] == expected_status and report["qr_saved"] and recorder.qr
+                 and (not args.capture_sms or recorder.sms)) else 1
 
 
 if __name__ == "__main__":

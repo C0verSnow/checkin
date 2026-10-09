@@ -13,6 +13,7 @@ from browser_setup import ensure_cloakbrowser, positive_seconds
 
 URL = "https://www.douyin.com/"
 DEFAULT_PHONE = "13657450350"
+COUNTRY_CODE = "+1"
 SEND_TEXT = re.compile(r"^(发送验证码|获取验证码)$")
 QR_SELECTOR = 'img, canvas, div'
 DOM_HELPERS = Path(__file__).with_name("douyin_dom.js").read_text(encoding="utf-8")
@@ -49,43 +50,23 @@ def type_input(page, field, value):
         raise RuntimeError("输入框的内容和预期不一致，停止发送")
 
 
-def select_china_country(page, report=None):
-    """Edit the country input, or select China when the page resets typed text."""
+def edit_country_code(page, report=None):
+    """Edit the visible country input and verify it survives losing focus."""
     country = visible(page.get_by_role("combobox", name="国家/地区", exact=True))
     if country is None:
         country = visible(page.locator('input[name="web-login-area-code-input"]'))
     if country is None:
         raise RuntimeError("没有找到可编辑的手机号区号输入框")
-    try:
-        type_input(page, country, "+86")
-    except RuntimeError:
-        # Some live layouts keep the selected country separate from the
-        # editable search text. Choose the visible, exact China/+86 row.
-        china = visible(page.get_by_text("中国", exact=True))
-        if china is None or "+86" not in china.locator("xpath=..").inner_text():
-            raise
-        box = china.bounding_box()
-        if box is None:
-            raise RuntimeError("中国区号选项没有可见位置，停止发送")
-        page.bring_to_front()
-        original = getattr(page, "_original", None)
-        mouse_click = original.mouse_click if original is not None else page.mouse.click
-        mouse_click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-        deadline = time.monotonic() + 3
-        while country.input_value().strip() != "+86" and time.monotonic() < deadline:
-            page.wait_for_timeout(100)
-        if country.input_value().strip() != "+86":
-            selection = country.evaluate("el => (" + DOM_HELPERS + ").selectChina(el)")
-            if report is not None:
-                report["country_selection"] = selection
-            deadline = time.monotonic() + 3
-            while country.input_value().strip() != "+86" and time.monotonic() < deadline:
-                page.wait_for_timeout(100)
-        if country.input_value().strip() != "+86":
-            raise RuntimeError("选择中国后区号仍不是 +86，停止发送")
-    page.keyboard.press("Tab")
-    if country.input_value().strip() != "+86":
-        raise RuntimeError("区号没有改成 +86，停止发送")
+    type_input(page, country, COUNTRY_CODE)
+    original = getattr(page, "_original", None)
+    key_press = original.keyboard_press if original is not None else page.keyboard.press
+    key_press("Tab")
+    page.wait_for_timeout(250)
+    if country.input_value().strip() != COUNTRY_CODE:
+        raise RuntimeError(f"区号没有保持为 {COUNTRY_CODE}，停止发送")
+    if report is not None:
+        report["country_selection"] = {"selected": True, "reason": "input_edited",
+                                       "value": COUNTRY_CODE}
     return country
 
 
@@ -318,10 +299,10 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             field = phone_field(page)
         if field is None:
             raise RuntimeError("没有找到手机号输入框")
-        country = select_china_country(page, report)
-        report["country_code"] = "+86"
+        country = edit_country_code(page, report)
+        report["country_code"] = COUNTRY_CODE
         type_input(page, field, phone)
-        if country.input_value().strip() != "+86":
+        if country.input_value().strip() != COUNTRY_CODE:
             raise RuntimeError("填写手机号后区号发生变化，停止发送")
         # Agree to the login terms only in the visible phone form when required.
         checkbox = visible(page.get_by_role("checkbox"))

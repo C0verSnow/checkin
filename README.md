@@ -47,7 +47,7 @@ python douyin_requests.py --bundle output/douyin-api/request-bundle.json --send-
 
 | 文件 | 内容 |
 | --- | --- |
-| `douyin_dom.js` | 浏览器内使用的 JavaScript 辅助脚本，负责输入框聚焦和精确选择中国区号，不发送短信 |
+| `douyin_dom.js` | 浏览器内使用的 JavaScript 辅助脚本，负责让真实输入框获得焦点，不发送短信 |
 | `douyin_login.py` | 原有 CloakBrowser 登录入口，仍可独立保存截图 |
 | `douyin_export.py` | 捕获实际二维码/短信请求，并拦截浏览器短信发送 |
 | `douyin_requests.py` | 不启动浏览器的 Python HTTP 请求入口 |
@@ -73,4 +73,4 @@ GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR �
 
 按仓库约定，不进行本地构建、编译或会触发编译的测试。远端检查结果和任务过程记录在 `tasklist.md`。
 
-区号先尝试键盘输入和鼠标选择；若页面仍保留原区号，使用 `douyin_dom.js` 点击区号输入框所关联列表内的“中国 +86”完整选项。选项被遮挡时停止，选择后和填手机号后都必须确认输入框值为 `+86`。`country_selection` 记录此次选项选择结果。
+按用户最新要求，区号框可以直接编辑：脚本先将区号输入为 `+1`，再填手机号。输入后、失去焦点后和填手机号后都检查区号；被页面改回去时停止，不继续发送。`country_selection` 记录直接编辑结果，不再选择“中国 +86”下拉选项。
