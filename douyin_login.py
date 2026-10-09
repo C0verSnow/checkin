@@ -55,7 +55,11 @@ def select_china_country(page, field):
     if country is None:
         raise RuntimeError("没有找到手机号区号，不能确认收件号码")
     if code != "86":
-        country.click()
+        if country.get_attribute("role") == "combobox":
+            # This control opens its options when typing, not on an input click.
+            country.fill("+86")
+        else:
+            country.click()
         option = page.get_by_text(re.compile(r"^\+?\s*86$"), exact=True)
         option.first.wait_for()
         choice = visible(option)

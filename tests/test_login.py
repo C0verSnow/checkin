@@ -31,7 +31,7 @@ class LoginTests(unittest.TestCase):
             qrcode.make('https://example.com/login-fixture').save(root / 'image.png')
             (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
                 <img src="image.png" width="160" height="160"><h2>验证码登录</h2>
-                <div><input readonly id="country" value="+1" onclick="document.querySelector('#countries').hidden=false">
+                <div><input role="combobox" aria-label="国家/地区" id="country" value="+1" oninput="document.querySelector('#countries').hidden=false">
                 <div id="countries" hidden><span onclick="document.querySelector('#country').value='+86'; document.querySelector('#countries').hidden=true">+86</span></div>
                 <input placeholder="请输入手机号"></div><input type="checkbox" aria-label="同意协议">
                 <button onclick="if (!document.querySelector('input[type=checkbox]').checked) return;
