@@ -211,7 +211,10 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
                 if sms_endpoint(response.url) and response.request.method == "POST":
                     report["sms_responses"].append(summarize_sms_response(response))
             page.on("response", on_response)
+            send.scroll_into_view_if_needed()
             report["send_button_box"] = send.bounding_box()
+            if report["send_button_box"] is None:
+                raise RuntimeError("发送按钮没有可见位置")
             send.evaluate("""el => {
                 const root = document.documentElement;
                 delete root.dataset.checkinSendClick;
@@ -230,7 +233,10 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             }""")
             # Exactly one click; do not retry SMS requests on ambiguous feedback.
             report["send_attempted"] = True
-            send.click()
+            box = report["send_button_box"]
+            # Click the screenshot-visible center directly rather than relying
+            # on the locator's content-quad coordinate conversion.
+            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
             clicked_at = time.monotonic()
             page.wait_for_timeout(250)
             page.screenshot(path=str(output / "after-click.png"), full_page=True)
