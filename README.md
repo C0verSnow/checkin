@@ -27,6 +27,12 @@ python douyin_login.py --send-code --output-dir output/douyin-login --timeout-se
 
 GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR 时用真实 CloakBrowser 检查测试页面，覆盖成功、失败、安全验证、只有倒计时和只截图五种情况。测试页面不会访问抖音或发送短信。实际抖音截图只在手动运行时执行：选择 feature 分支，勾选 `send_code` 才点击一次发送。附件 `douyin-login` 提供实际 PNG、结果报告及 Python 脚本，保留 7 天。截图含手机号与当时的登录二维码，请按实际需要保存附件。网站可访问性和发送结果取决于抖音与 runner 网络，不能把测试页面通过当成真实短信发送成功。
 
+### 本次远端检查记录（2026-10-08）
+
+- [直接编辑区号的实际 CloakBrowser 检查](https://github.com/C0verSnow/checkin/actions/runs/37873427362)通过：输入框为 `+86`、手机号为 `13657450350`，二维码成功解码并保存。这次只截图，没有发送短信。附件 `douyin-login` 包含截图、脚本、依赖列表和说明。
+- [登录流程测试](https://github.com/C0verSnow/checkin/actions/runs/37873384781)及[原有搜索页检查](https://github.com/C0verSnow/checkin/actions/runs/37873384838)均通过。
+- [此前实际点击发送的一轮](https://github.com/C0verSnow/checkin/actions/runs/37873074736)使用了正确的区号和手机号，但页面没有明确成功提示，报告为 `unknown`，该轮按预期返回失败。已经保存实际发送后截图，不能据此宣称短信已送达，也没有自动重试。
+
 ## 用 CloakBrowser 保存可离线打开的搜索页
 
 两个 Python 入口脚本在 Linux 上打开“罗生门”搜索页，保存浏览器运行 JavaScript 后的页面，并把显示需要的 CSS、图片、SVG 和字体放进同一个 UTF-8 HTML 文件。把文件复制到 Windows、macOS 或 Linux 电脑，双击即可离线查看抓取时的页面。点击保存的视频链接会联网打开原网站。
