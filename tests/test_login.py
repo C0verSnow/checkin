@@ -16,6 +16,36 @@ from douyin_login import capture_login, open_login, sms_result, sms_endpoint, su
 
 
 class LoginTests(unittest.TestCase):
+    def test_visible_svg_qr_allows_login_form_to_be_prepared(self):
+        from qrcode.image.svg import SvgPathImage
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            svg = qrcode.make('https://example.com/svg-login-fixture',
+                              image_factory=SvgPathImage).to_string().decode()
+            (root / 'index.html').write_text('''<meta charset="utf-8">
+                <div style="width:600px;min-height:500px;background:white">
+                <h1>扫码登录</h1><h2>验证码登录</h2>
+                <span style="display:inline-block">''' + svg + '''</span>
+                <input role="combobox" aria-label="国家/地区" value="+1">
+                <input placeholder="请输入手机号"><button>发送验证码</button>
+                </div>''', encoding='utf-8')
+            server = ThreadingHTTPServer(('127.0.0.1', 0), partial(SimpleHTTPRequestHandler, directory=directory))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                output = Path('verification/login/svg-qr')
+                report = capture_login(ensure_cloakbrowser().launch, '13657450350', output,
+                    False, 3, url=f'http://127.0.0.1:{server.server_port}/index.html')
+                self.assertEqual(report['status'], 'not_requested', report)
+                self.assertTrue(report['qr_saved'])
+                self.assertEqual(report['country_code'], '+86')
+                self.assertTrue((output / 'login-qr.png').read_bytes().startswith(b'\x89PNG'))
+                self.assertFalse(report['send_attempted'])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
     def test_auto_opened_panel_during_entry_click(self):
         page = Mock()
         button = Mock()
