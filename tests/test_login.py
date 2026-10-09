@@ -2,6 +2,7 @@
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import qrcode
 from pathlib import Path
 import tempfile
 import threading
@@ -26,10 +27,10 @@ class LoginTests(unittest.TestCase):
     def test_real_browser_qr_phone_single_click_and_failed_feedback(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            # A deterministic QR-shaped fixture, not a real login credential.
-            (root / 'qrcode.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="160" height="160" fill="white"/><path d="M10 10h40v40H10zM110 10h40v40h-40zM10 110h40v40H10zM80 80h20v20H80z" fill="black"/></svg>')
+            # A real, decodable test QR containing no login credential.
+            qrcode.make('https://example.com/login-fixture').save(root / 'image.png')
             (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
-                <img src="qrcode.svg" alt="登录二维码"><h2>验证码登录</h2>
+                <img src="image.png" width="160" height="160"><h2>验证码登录</h2>
                 <input placeholder="请输入手机号"><input type="checkbox" aria-label="同意协议">
                 <button onclick="if (!document.querySelector('input[type=checkbox]').checked) return;
                 window.clicks++; this.textContent='59秒后重新发送';
@@ -43,10 +44,8 @@ class LoginTests(unittest.TestCase):
                 for feedback, expected in [('验证码已发送', 'sent'), ('验证码发送失败', 'failed'), ('请完成安全验证', 'verification_required'), ('等待反馈', 'countdown_only')]:
                     with self.subTest(expected=expected):
                         from urllib.parse import urlencode
-                        browsers = []
                         def launch(**kwargs):
                             browser = browser_launch(**kwargs)
-                            browsers.append(browser)
                             return browser
                         # Capture actual inputs and click count immediately before close.
                         evidence = {}

@@ -13,7 +13,7 @@ from capture_page import ensure_cloakbrowser, positive_seconds
 URL = "https://www.douyin.com/"
 DEFAULT_PHONE = "13657450350"
 SEND_TEXT = re.compile(r"^(发送验证码|获取验证码)$")
-QR_SELECTOR = 'img[src*="qrcode" i], img[src*="qr_code" i], img[alt*="二维码"], canvas'
+QR_SELECTOR = 'img, canvas, div'
 
 
 def visible(locator):
@@ -30,7 +30,7 @@ def phone_field(page):
 
 
 def open_login(page):
-    if phone_field(page) is not None or visible(page.locator(QR_SELECTOR)) is not None:
+    if phone_field(page) is not None or visible(page.get_by_text("扫码登录", exact=True)) is not None:
         return
     button = visible(page.get_by_role("button", name="登录", exact=True))
     if button is None:
@@ -42,25 +42,43 @@ def open_login(page):
 
 
 def save_qr(page, output, timeout_seconds):
-    # Save the whole login panel as well as a crop of the actual QR element.
+    # Decode candidates inside the login panel; image URLs need not mention QR.
+    from io import BytesIO
+    from PIL import Image
+    import zxingcpp
+
     page.screenshot(path=str(output / "login.png"), full_page=True)
-    candidate = visible(page.locator(QR_SELECTOR))
-    if candidate is None:
-        tab = visible(page.get_by_text(re.compile(r"^(扫码登录|二维码登录)$")))
+    heading = visible(page.get_by_text("扫码登录", exact=True))
+    if heading is None:
+        tab = visible(page.get_by_text("二维码登录", exact=True))
         if tab is not None:
             tab.click()
+            heading = visible(page.get_by_text("扫码登录", exact=True))
+    if heading is None:
+        raise RuntimeError("没有找到扫码登录区域")
+    panel = heading.locator("xpath=ancestor::*[contains(., '验证码登录')][1]")
+    if not panel.count():
+        raise RuntimeError("没有找到同时包含扫码和验证码登录的弹窗")
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
-        candidate = visible(page.locator(QR_SELECTOR))
-        if candidate is not None:
+        candidates = panel.locator(QR_SELECTOR)
+        for index in range(candidates.count()):
+            candidate = candidates.nth(index)
+            if not candidate.is_visible():
+                continue
             box = candidate.bounding_box()
-            ready = candidate.evaluate("el => el.tagName !== 'IMG' || (el.complete && el.naturalWidth > 0)")
-            if ready and box and box["width"] >= 100 and box["height"] >= 100:
-                candidate.screenshot(path=str(output / "login-qr.png"))
+            if not box or not (100 <= box["width"] <= 320 and 100 <= box["height"] <= 320):
+                continue
+            if not 0.8 <= box["width"] / box["height"] <= 1.2:
+                continue
+            png = candidate.screenshot(timeout=5000)
+            codes = zxingcpp.read_barcodes(Image.open(BytesIO(png)), formats=zxingcpp.BarcodeFormat.QRCode)
+            if codes:
+                (output / "login-qr.png").write_bytes(png)
                 page.screenshot(path=str(output / "login.png"), full_page=True)
                 return
         page.wait_for_timeout(250)
-    raise RuntimeError("登录二维码没有加载出来，已保存登录页面")
+    raise RuntimeError("登录二维码没有加载出来或无法解码，已保存登录页面")
 
 
 def sms_result(text, button_text=""):
@@ -139,6 +157,7 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
         try:
             if page is not None:
                 report["url"] = page.url
+                report["page_text"] = page.locator("body").inner_text()
                 page.screenshot(path=str(output / "sms-result.png"), full_page=True)
         except Exception as exc:
             report["screenshot_error"] = str(exc)

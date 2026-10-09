@@ -24,8 +24,9 @@ jobs:
         with:
           python-version: '3.12'
       - run: |
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements.txt qrcode
           python -m playwright install-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
       - name: Test login flow with real CloakBrowser and a local fixture
         run: python -m unittest discover -s tests -p test_login.py -v
       - uses: actions/upload-artifact@v4
