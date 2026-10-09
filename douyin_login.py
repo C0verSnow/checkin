@@ -30,6 +30,15 @@ def phone_field(page):
     return visible(page.get_by_placeholder(re.compile("手机号|手机号码")))
 
 
+def type_input(page, field, value):
+    """Focus the actual input without humanized locator click coordinates."""
+    field.focus()
+    page.keyboard.press("ControlOrMeta+A")
+    page.keyboard.type(value, delay=80)
+    if field.input_value() != value:
+        raise RuntimeError("输入框的内容和预期不一致，停止发送")
+
+
 def select_china_country(page):
     """Edit the country input directly; there is no dropdown selection step."""
     country = visible(page.get_by_role("combobox", name="国家/地区", exact=True))
@@ -37,8 +46,8 @@ def select_china_country(page):
         country = visible(page.locator('input[name="web-login-area-code-input"]'))
     if country is None:
         raise RuntimeError("没有找到可编辑的手机号区号输入框")
-    country.fill("+86")
-    country.press("Tab")
+    type_input(page, country, "+86")
+    page.keyboard.press("Tab")
     if country.input_value().strip() != "+86":
         raise RuntimeError("区号没有改成 +86，停止发送")
     return country
@@ -216,7 +225,7 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             raise RuntimeError("没有找到手机号输入框")
         country = select_china_country(page)
         report["country_code"] = "+86"
-        field.fill(phone)
+        type_input(page, field, phone)
         if country.input_value().strip() != "+86":
             raise RuntimeError("填写手机号后区号发生变化，停止发送")
         # Agree to the login terms only in the visible phone form when required.
