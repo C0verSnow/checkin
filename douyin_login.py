@@ -49,13 +49,23 @@ def type_input(page, field, value):
 
 
 def select_china_country(page):
-    """Edit the country input directly; there is no dropdown selection step."""
+    """Edit the country input, or select China when the page resets typed text."""
     country = visible(page.get_by_role("combobox", name="国家/地区", exact=True))
     if country is None:
         country = visible(page.locator('input[name="web-login-area-code-input"]'))
     if country is None:
         raise RuntimeError("没有找到可编辑的手机号区号输入框")
-    type_input(page, country, "+86")
+    try:
+        type_input(page, country, "+86")
+    except RuntimeError:
+        # Some live layouts keep the selected country separate from the
+        # editable search text. Choose the visible, exact China/+86 row.
+        china = visible(page.get_by_text("中国", exact=True))
+        if china is None or "+86" not in china.locator("xpath=..").inner_text():
+            raise
+        china.evaluate("el => el.click()")
+        if country.input_value().strip() != "+86":
+            raise RuntimeError("选择中国后区号仍不是 +86，停止发送")
     page.keyboard.press("Tab")
     if country.input_value().strip() != "+86":
         raise RuntimeError("区号没有改成 +86，停止发送")
