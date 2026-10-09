@@ -8,13 +8,44 @@ from urllib.parse import parse_qs, urlsplit
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 
-from capture_page import ensure_cloakbrowser
+from browser_setup import ensure_cloakbrowser
 from douyin_login import capture_login, open_login, sms_result, sms_endpoint, summarize_sms_response
 
 
 class LoginTests(unittest.TestCase):
+    def test_visible_svg_qr_allows_login_form_to_be_prepared(self):
+        from qrcode.image.svg import SvgPathImage
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            svg = qrcode.make('https://example.com/svg-login-fixture',
+                              image_factory=SvgPathImage).to_string().decode()
+            (root / 'index.html').write_text('''<meta charset="utf-8">
+                <div style="width:600px;min-height:500px;background:white">
+                <h1>扫码登录</h1><h2>验证码登录</h2>
+                <span style="display:inline-block">''' + svg + '''</span>
+                <input role="combobox" aria-label="国家/地区" value="+1">
+                <input placeholder="请输入手机号"><button>发送验证码</button>
+                </div>''', encoding='utf-8')
+            server = ThreadingHTTPServer(('127.0.0.1', 0), partial(SimpleHTTPRequestHandler, directory=directory))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                output = Path('verification/login/svg-qr')
+                report = capture_login(ensure_cloakbrowser().launch, '13657450350', output,
+                    False, 3, url=f'http://127.0.0.1:{server.server_port}/index.html')
+                self.assertEqual(report['status'], 'not_requested', report)
+                self.assertTrue(report['qr_saved'])
+                self.assertEqual(report['country_code'], '+86')
+                self.assertTrue((output / 'login-qr.png').read_bytes().startswith(b'\x89PNG'))
+                self.assertFalse(report['send_attempted'])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
     def test_auto_opened_panel_during_entry_click(self):
         page = Mock()
         button = Mock()
@@ -64,11 +95,12 @@ class LoginTests(unittest.TestCase):
             qrcode.make('https://example.com/login-fixture').save(root / 'image.png')
             (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
                 <img src="image.png" width="160" height="160"><h2>验证码登录</h2>
-                <div><input role="combobox" aria-label="国家/地区" name="web-login-area-code-input" id="country" value="+1">
+                <div><input role="combobox" aria-label="国家/地区" name="web-login-area-code-input" id="country" value="+1" oninput="this.dataset.edited=this.value" onblur="this.value=this.dataset.edited || ' +1'.trim()">
                 <input placeholder="请输入手机号"></div><input type="checkbox" aria-label="同意协议">
                 <button onclick="if (!document.querySelector('input[type=checkbox]').checked || document.querySelector('#country').value !== '+86') return;
                 window.clicks++; this.textContent='59秒后重新发送';
                 const outcome=new URLSearchParams(location.search).get('feedback');
+                if (outcome==='api_delayed_failure' || outcome==='api_delayed_timeout') document.querySelector('#feedback').textContent='验证码已发送';
                 if (outcome==='iframe') {
                     const frame=document.createElement('iframe'); frame.srcdoc='<p>请完成安全验证</p>'; document.body.append(frame);
                 } else if (!outcome.startsWith('api_')) document.querySelector('#feedback').textContent=outcome;
@@ -80,18 +112,29 @@ class LoginTests(unittest.TestCase):
                     payload = {'data': {'error_code': 0}} if outcome == 'api_accepted' else {}
                     if outcome == 'api_rejected':
                         payload = {'data': {'error_code': 12, 'description': '发送失败'}}
+                    if outcome == 'api_rate_limited':
+                        payload = {'code': 0, 'message': 'success', 'data': {'error_code': 1105, 'description': '验证码发送频繁，请稍后再试'}}
+                    if outcome == 'api_delayed_failure':
+                        time.sleep(2.5)
+                        payload = {'data': {'error_code': 12, 'description': '发送失败'}}
+                    if outcome == 'api_delayed_timeout':
+                        time.sleep(5)
+                        payload = {'data': {'error_code': 12, 'description': '发送失败'}}
                     body = json.dumps(payload).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(body)))
                     self.end_headers()
-                    self.wfile.write(body)
+                    try:
+                        self.wfile.write(body)
+                    except BrokenPipeError:
+                        pass  # The timeout case intentionally closes the page first.
             server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=directory))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             browser_launch = ensure_cloakbrowser().launch
             try:
-                for feedback, expected in [('验证码已发送', 'sent'), ('验证码发送失败', 'failed'), ('请完成安全验证', 'verification_required'), ('等待反馈', 'countdown_only'), ('api_accepted', 'request_accepted'), ('api_rejected', 'failed'), ('iframe', 'verification_required')]:
+                for feedback, expected in [('验证码已发送', 'sent'), ('验证码发送失败', 'failed'), ('请完成安全验证', 'verification_required'), ('等待反馈', 'countdown_only'), ('api_accepted', 'request_accepted'), ('api_rejected', 'failed'), ('api_rate_limited', 'failed'), ('api_delayed_failure', 'failed'), ('iframe', 'verification_required')]:
                     with self.subTest(expected=expected):
                         from urllib.parse import urlencode
                         def launch(**kwargs):
@@ -118,6 +161,12 @@ class LoginTests(unittest.TestCase):
                         self.assertEqual(report['status'], expected, report)
                         self.assertTrue(report['qr_saved'])
                         self.assertTrue(report['send_clicked'], report)
+                        self.assertEqual(report['sms_response_state'], 'completed', report)
+                        self.assertEqual(len(report['sms_responses']), 1)
+                        if feedback == 'api_rate_limited':
+                            self.assertEqual(report['sms_responses'][0]['reason'], 'rate_limited')
+                        if feedback == 'api_delayed_failure':
+                            self.assertEqual(report['ui_status'], 'sent')
                         self.assertEqual(evidence, {'clicks': 1, 'phone': '13657450350', 'country': '+86'})
                         self.assertEqual(json.loads((output/'result.json').read_text())['status'], expected)
                         for name in ('login-qr.png', 'before-send.png', 'after-click.png', 'sms-result.png'):
@@ -127,6 +176,12 @@ class LoginTests(unittest.TestCase):
                     url=f'http://127.0.0.1:{server.server_port}/index.html')
                 self.assertEqual(report['status'], 'not_requested', report)
                 self.assertEqual(evidence['clicks'], 0)
+                report = capture_login(wrapped_launch, '13657450350', Path('verification/login/pending-timeout'), True, 2,
+                    url=f'http://127.0.0.1:{server.server_port}/index.html?feedback=api_delayed_timeout')
+                self.assertEqual(report['status'], 'unknown', report)
+                self.assertEqual(report['ui_status'], 'sent')
+                self.assertEqual(report['sms_response_state'], 'pending_timeout')
+                self.assertEqual(evidence['clicks'], 1)
             finally:
                 server.shutdown()
                 server.server_close()

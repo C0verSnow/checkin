@@ -9,12 +9,14 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from capture_page import ensure_cloakbrowser, positive_seconds
+from browser_setup import ensure_cloakbrowser, positive_seconds
 
 URL = "https://www.douyin.com/"
 DEFAULT_PHONE = "13657450350"
+COUNTRY_CODE = "+86"
 SEND_TEXT = re.compile(r"^(发送验证码|获取验证码)$")
-QR_SELECTOR = 'img, canvas, div'
+QR_SELECTOR = 'img, canvas, svg, div'
+DOM_HELPERS = Path(__file__).with_name("douyin_dom.js").read_text(encoding="utf-8")
 
 
 def visible(locator):
@@ -30,17 +32,43 @@ def phone_field(page):
     return visible(page.get_by_placeholder(re.compile("手机号|手机号码")))
 
 
-def select_china_country(page):
-    """Edit the country input directly; there is no dropdown selection step."""
+def type_input(page, field, value):
+    """Focus the actual input without humanized locator click coordinates."""
+    # CloakBrowser also patches Locator.focus; use the DOM input itself so
+    # focusing cannot turn into another coordinate-based mouse action.
+    focused = field.evaluate("el => (" + DOM_HELPERS + ").focusInput(el)")
+    if not focused:
+        raise RuntimeError("输入框没有获得焦点，停止发送")
+    original = getattr(page, "_original", None)
+    if original is not None:
+        original.keyboard_press("ControlOrMeta+A")
+        original.keyboard_type(value, delay=80)
+    else:
+        page.keyboard.press("ControlOrMeta+A")
+        page.keyboard.type(value, delay=80)
+    if field.input_value() != value:
+        raise RuntimeError("输入框的内容和预期不一致，停止发送")
+
+
+def edit_country_code(page, report=None):
+    """Edit the visible country input and verify it survives losing focus."""
     country = visible(page.get_by_role("combobox", name="国家/地区", exact=True))
     if country is None:
         country = visible(page.locator('input[name="web-login-area-code-input"]'))
     if country is None:
         raise RuntimeError("没有找到可编辑的手机号区号输入框")
-    country.fill("+86")
-    country.press("Tab")
-    if country.input_value().strip() != "+86":
-        raise RuntimeError("区号没有改成 +86，停止发送")
+    edited = country.evaluate("(el, value) => (" + DOM_HELPERS + ").setInputValue(el, value)", COUNTRY_CODE)
+    if not edited or country.input_value().strip() != COUNTRY_CODE:
+        raise RuntimeError("区号输入框的内容和预期不一致，停止发送")
+    original = getattr(page, "_original", None)
+    key_press = original.keyboard_press if original is not None else page.keyboard.press
+    key_press("Tab")
+    page.wait_for_timeout(250)
+    if country.input_value().strip() != COUNTRY_CODE:
+        raise RuntimeError(f"区号没有保持为 {COUNTRY_CODE}，停止发送")
+    if report is not None:
+        report["country_selection"] = {"selected": True, "reason": "input_edited",
+                                       "value": COUNTRY_CODE}
     return country
 
 
@@ -80,6 +108,16 @@ def save_qr(page, output, timeout_seconds):
     panel = heading.locator("xpath=ancestor::*[contains(., '验证码登录')][1]")
     if not panel.count():
         raise RuntimeError("没有找到同时包含扫码和验证码登录的弹窗")
+    # Newer layouts put both headings in a short tab row while the QR is
+    # its sibling. Walk up to the visible content panel before scanning.
+    for _ in range(10):
+        box = panel.bounding_box()
+        if box and box["height"] >= 200:
+            break
+        parent = panel.locator("xpath=..")
+        if not parent.count():
+            break
+        panel = parent
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         candidates = panel.locator(QR_SELECTOR)
@@ -92,7 +130,9 @@ def save_qr(page, output, timeout_seconds):
                 continue
             if not 0.8 <= box["width"] / box["height"] <= 1.2:
                 continue
-            png = candidate.screenshot(timeout=5000)
+            # Use viewport coordinates, like the full-page evidence, instead
+            # of locator content quads which may differ in CloakBrowser.
+            png = page.screenshot(clip=box, timeout=5000)
             codes = zxingcpp.read_barcodes(Image.open(BytesIO(png)), formats=zxingcpp.BarcodeFormat.QRCode)
             if codes:
                 (output / "login-qr.png").write_bytes(png)
@@ -130,28 +170,86 @@ def summarize_sms_response(response):
             raise ValueError("短信接口没有返回 JSON 对象")
         data = payload.get("data")
         data = data if isinstance(data, dict) else {}
-        for key in ("error_code", "status_code", "code"):
-            value = data.get(key, payload.get(key))
-            if value is not None:
-                summary["code"] = value
-                break
-        message = data.get("description") or data.get("message") or payload.get("description") or payload.get("message") or ""
-        summary["message"] = str(message)[:300]
-        if data.get("verify_center_decision_conf"):
+        # Check the business result as well as the outer envelope. An outer
+        # success must not hide an inner failure (or the other way around).
+        codes = []
+        messages = []
+        for source in (data, payload):
+            for key in ("error_code", "status_code", "code"):
+                value = source.get(key)
+                if type(value) is int:
+                    codes.append(value)
+                elif isinstance(value, str) and re.fullmatch(r"-?\d{1,12}", value):
+                    codes.append(int(value))
+            for key in ("description", "message", "error_msg", "errmsg", "status_msg"):
+                value = source.get(key)
+                if isinstance(value, str) and value and value not in messages:
+                    messages.append(value)
+        if codes:
+            summary["code"] = next((code for code in codes if code != 0), codes[0])
+        summary["message"] = " | ".join(messages)[:300]
+        feedback = " | ".join(messages)
+        if response.status == 429 or re.search(r"频繁|频率|次数.{0,8}(限制|上限)|too many|rate.?limit|frequen", feedback, re.I):
+            summary.update(status="failed", reason="rate_limited")
+        elif any(source.get("verify_center_decision_conf") for source in (data, payload)) or re.search(
+                r"安全验证|完成验证|滑块|captcha|verification|verify", feedback, re.I):
             summary["status"] = "verification_required"
         elif response.status >= 400:
             summary["status"] = "failed"
-        elif type(summary.get("code")) is int and summary["code"] == 0 and 200 <= response.status < 300:
-            summary["status"] = "request_accepted"
-        elif re.search(r"安全验证|完成验证|滑块|captcha|verification|verify", summary["message"], re.I):
-            summary["status"] = "verification_required"
-        elif "code" in summary and summary["code"] not in (0, "0"):
+        elif re.search(r"发送失败|请求失败|手机号.{0,8}(错误|不正确|无效)|fail|invalid|error", feedback, re.I):
             summary["status"] = "failed"
+        elif "code" in summary and summary["code"] != 0:
+            summary["status"] = "failed"
+        elif summary.get("code") == 0 and 200 <= response.status < 300:
+            summary["status"] = "request_accepted"
     except Exception as exc:
         summary["read_error"] = type(exc).__name__
         if response.status >= 400:
             summary["status"] = "failed"
+        if response.status == 429:
+            summary.update(status="failed", reason="rate_limited")
     return summary
+
+
+def observe_sms_requests(page, report, recorder=None):
+    """Read bodies after requestfinished; keep aborted requests distinct from replies."""
+    pending = {}
+    report["sms_requests"] = []
+
+    def tracked(request):
+        return report["send_attempted"] and request.method == "POST" and sms_endpoint(request.url)
+
+    def on_request(request):
+        if tracked(request):
+            endpoint = urlsplit(request.url)
+            item = {"endpoint": endpoint.scheme + "://" + endpoint.netloc + endpoint.path,
+                    "state": "pending"}
+            report["sms_requests"].append(item)
+            pending[request] = item
+
+    def on_finished(request):
+        if request not in pending:
+            return
+        item = pending.pop(request)
+        try:
+            response = request.response()
+            if response is None:
+                item["state"] = "no_response"
+                return
+            report["sms_responses"].append(summarize_sms_response(response))
+            item["state"] = "completed"
+        except Exception as exc:
+            item.update(state="read_error", error_type=type(exc).__name__)
+
+    def on_failed(request):
+        if request in pending:
+            pending.pop(request)["state"] = "network_error"
+
+    # Context events also cover requests initiated by embedded frames.
+    page.context.on("request", on_request)
+    page.context.on("requestfinished", on_finished)
+    page.context.on("requestfailed", on_failed)
+    return pending
 
 
 def visible_feedback(page):
@@ -168,7 +266,7 @@ def visible_feedback(page):
     return text
 
 
-def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, headed=False, url=URL):
+def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, headed=False, url=URL, recorder=None):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     # Remove old evidence so a failed run cannot inherit a successful screenshot.
@@ -181,7 +279,10 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
     try:
         browser = launch(headless=not headed, locale="zh-CN", timezone="Asia/Shanghai",
                          humanize=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page = browser.new_page(viewport={"width": 1440, "height": 1000},
+                                service_workers="block")
+        if recorder is not None:
+            recorder.attach(page)
         page.set_default_timeout(timeout_seconds * 1000)
         response = page.goto(url, wait_until="domcontentloaded")
         if response is None or response.status >= 400:
@@ -200,10 +301,10 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             field = phone_field(page)
         if field is None:
             raise RuntimeError("没有找到手机号输入框")
-        country = select_china_country(page)
-        report["country_code"] = "+86"
-        field.fill(phone)
-        if country.input_value().strip() != "+86":
+        country = edit_country_code(page, report)
+        report["country_code"] = COUNTRY_CODE
+        type_input(page, field, phone)
+        if country.input_value().strip() != COUNTRY_CODE:
             raise RuntimeError("填写手机号后区号发生变化，停止发送")
         # Agree to the login terms only in the visible phone form when required.
         checkbox = visible(page.get_by_role("checkbox"))
@@ -214,10 +315,7 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             raise RuntimeError("没有找到发送验证码按钮")
         page.screenshot(path=str(output / "before-send.png"), full_page=True)
         if send_code:
-            def on_response(response):
-                if sms_endpoint(response.url) and response.request.method == "POST":
-                    report["sms_responses"].append(summarize_sms_response(response))
-            page.on("response", on_response)
+            pending_sms = observe_sms_requests(page, report, recorder)
             send.scroll_into_view_if_needed()
             report["send_button_box"] = send.bounding_box()
             if report["send_button_box"] is None:
@@ -262,18 +360,25 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
                 feedback_button = visible(page.get_by_text(re.compile(r"\d+\s*(秒|s|S).{0,12}|重新发送|重新获取")))
                 button_text = feedback_button.inner_text() if feedback_button is not None else ""
                 status = sms_result(text, button_text)
-                if status not in {"sent", "failed", "verification_required"}:
-                    for result in report["sms_responses"]:
-                        if result["status"] != "unknown":
-                            status = result["status"]
-                            if status in {"failed", "verification_required"}:
-                                break
+                report["ui_status"] = status
+                for result in report["sms_responses"]:
+                    if result["status"] in {"failed", "verification_required"}:
+                        status = result["status"]
+                        break
+                    if result["status"] == "request_accepted" and status not in {"failed", "verification_required"}:
+                        status = result["status"]
                 report.update(status=status, feedback_text=text, button_text=button_text)
-                if status in {"sent", "failed", "verification_required"}:
-                    break
-                if status == "request_accepted" and time.monotonic() - clicked_at >= 2:
+                # UI feedback may arrive before the HTTP body. Wait for the
+                # in-flight response, within the existing timeout, without clicking again.
+                if status in {"sent", "failed", "verification_required", "request_accepted"} and not pending_sms and time.monotonic() - clicked_at >= 2:
                     break
                 page.wait_for_timeout(250)
+            report["sms_response_state"] = (
+                "completed" if report["sms_responses"] else
+                "pending_timeout" if pending_sms else
+                report["sms_requests"][-1]["state"] if report["sms_requests"] else "not_observed")
+            if pending_sms and report["status"] in {"sent", "request_accepted"}:
+                report["status"] = "unknown"
         return report
     except Exception as exc:
         report.update(status="error", error=str(exc))
