@@ -32,25 +32,38 @@ def phone_field(page):
 def select_china_country(page, field):
     """The overseas runner defaults to +1; never send until +86 is selected."""
     country_pattern = re.compile(r"^\+\s*\d{1,4}$")
+
+    def country_in(row):
+        label = visible(row.get_by_text(country_pattern, exact=True))
+        if label is not None:
+            return label, re.sub(r"\s", "", label.inner_text()).lstrip("+")
+        # Douyin can render the country code as a read-only input value.
+        inputs = row.locator("input")
+        for index in range(inputs.count()):
+            candidate = inputs.nth(index)
+            if candidate.is_visible() and re.fullmatch(r"\+?\d{1,4}", candidate.input_value()):
+                return candidate, candidate.input_value().lstrip("+")
+        return None, None
+
     row = field
-    country = None
+    country, code = None, None
     for _ in range(5):
         row = row.locator("xpath=..")
-        country = visible(row.get_by_text(country_pattern, exact=True))
+        country, code = country_in(row)
         if country is not None:
             break
     if country is None:
         raise RuntimeError("没有找到手机号区号，不能确认收件号码")
-    if re.sub(r"\s", "", country.inner_text()) != "+86":
+    if code != "86":
         country.click()
-        option = page.get_by_text(re.compile(r"^\+\s*86$"), exact=True)
+        option = page.get_by_text(re.compile(r"^\+?\s*86$"), exact=True)
         option.first.wait_for()
         choice = visible(option)
         if choice is None:
             raise RuntimeError("没有找到中国大陆 +86 选项")
         choice.click()
-    selected = visible(row.get_by_text(country_pattern, exact=True))
-    if selected is None or re.sub(r"\s", "", selected.inner_text()) != "+86":
+    _, selected_code = country_in(row)
+    if selected_code != "86":
         raise RuntimeError("中国大陆 +86 区号没有选中，停止发送")
 
 
@@ -185,6 +198,9 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             if page is not None:
                 report["url"] = page.url
                 report["page_text"] = page.locator("body").inner_text()
+                if report["status"] == "error":
+                    report["form_controls"] = page.locator("input").evaluate_all(
+                        "els => els.map(el => ({type:el.type, value:el.value, placeholder:el.placeholder, html:el.outerHTML.slice(0,1500)}))")
                 page.screenshot(path=str(output / "sms-result.png"), full_page=True)
         except Exception as exc:
             report["screenshot_error"] = str(exc)
@@ -211,7 +227,7 @@ def main(argv=None):
     except Exception as exc:
         print(f"浏览器准备失败：{exc}", file=sys.stderr)
         return 1
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(json.dumps({key: value for key, value in report.items() if key not in {"page_text", "form_controls"}}, ensure_ascii=False, indent=2))
     print(f"截图和报告：{args.output_dir.resolve()}")
     return 0 if report["qr_saved"] and report["status"] in {"sent", "not_requested"} else 1
 
