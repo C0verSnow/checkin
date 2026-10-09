@@ -361,6 +361,8 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
                 "completed" if report["sms_responses"] else
                 "pending_timeout" if pending_sms else
                 report["sms_requests"][-1]["state"] if report["sms_requests"] else "not_observed")
+            if pending_sms and report["status"] in {"sent", "request_accepted"}:
+                report["status"] = "unknown"
         return report
     except Exception as exc:
         report.update(status="error", error=str(exc))

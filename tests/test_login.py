@@ -70,7 +70,7 @@ class LoginTests(unittest.TestCase):
                 <button onclick="if (!document.querySelector('input[type=checkbox]').checked || document.querySelector('#country').value !== '+86') return;
                 window.clicks++; this.textContent='59秒后重新发送';
                 const outcome=new URLSearchParams(location.search).get('feedback');
-                if (outcome==='api_delayed_failure') document.querySelector('#feedback').textContent='验证码已发送';
+                if (outcome==='api_delayed_failure' || outcome==='api_delayed_timeout') document.querySelector('#feedback').textContent='验证码已发送';
                 if (outcome==='iframe') {
                     const frame=document.createElement('iframe'); frame.srcdoc='<p>请完成安全验证</p>'; document.body.append(frame);
                 } else if (!outcome.startsWith('api_')) document.querySelector('#feedback').textContent=outcome;
@@ -87,12 +87,18 @@ class LoginTests(unittest.TestCase):
                     if outcome == 'api_delayed_failure':
                         time.sleep(2.5)
                         payload = {'data': {'error_code': 12, 'description': '发送失败'}}
+                    if outcome == 'api_delayed_timeout':
+                        time.sleep(5)
+                        payload = {'data': {'error_code': 12, 'description': '发送失败'}}
                     body = json.dumps(payload).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(body)))
                     self.end_headers()
-                    self.wfile.write(body)
+                    try:
+                        self.wfile.write(body)
+                    except BrokenPipeError:
+                        pass  # The timeout case intentionally closes the page first.
             server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=directory))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -140,6 +146,12 @@ class LoginTests(unittest.TestCase):
                     url=f'http://127.0.0.1:{server.server_port}/index.html')
                 self.assertEqual(report['status'], 'not_requested', report)
                 self.assertEqual(evidence['clicks'], 0)
+                report = capture_login(wrapped_launch, '13657450350', Path('verification/login/pending-timeout'), True, 2,
+                    url=f'http://127.0.0.1:{server.server_port}/index.html?feedback=api_delayed_timeout')
+                self.assertEqual(report['status'], 'unknown', report)
+                self.assertEqual(report['ui_status'], 'sent')
+                self.assertEqual(report['sms_response_state'], 'pending_timeout')
+                self.assertEqual(evidence['clicks'], 1)
             finally:
                 server.shutdown()
                 server.server_close()
