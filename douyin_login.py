@@ -52,7 +52,13 @@ def open_login(page):
         button = visible(page.get_by_text("登录", exact=True))
     if button is None:
         raise RuntimeError("没有找到登录入口")
-    button.click()
+    try:
+        button.click(timeout=5000)
+    except Exception:
+        # Douyin can open its login panel while the entry click is waiting.
+        # That panel intercepts the entry button; use the panel already open.
+        if phone_field(page) is None and visible(page.get_by_text("扫码登录", exact=True)) is None:
+            raise
     page.get_by_text(re.compile("扫码登录|验证码登录|手机号登录")).first.wait_for()
 
 

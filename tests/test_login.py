@@ -3,7 +3,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import qrcode
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 from pathlib import Path
 import tempfile
@@ -11,10 +11,23 @@ import threading
 import unittest
 
 from capture_page import ensure_cloakbrowser
-from douyin_login import capture_login, sms_result, sms_endpoint, summarize_sms_response
+from douyin_login import capture_login, open_login, sms_result, sms_endpoint, summarize_sms_response
 
 
 class LoginTests(unittest.TestCase):
+    def test_auto_opened_panel_during_entry_click(self):
+        page = Mock()
+        button = Mock()
+        button.click.side_effect = RuntimeError('login panel intercepts pointer events')
+        with patch('douyin_login.phone_field', side_effect=[None, Mock()]), \
+             patch('douyin_login.visible', side_effect=[None, button]):
+            open_login(page)
+        button.click.assert_called_once_with(timeout=5000)
+        with patch('douyin_login.phone_field', return_value=None), \
+             patch('douyin_login.visible', side_effect=[None, button, None]):
+            with self.assertRaisesRegex(RuntimeError, 'intercepts'):
+                open_login(page)
+
     def test_feedback_requires_explicit_success(self):
         for text, button, expected in [
             ('验证码已发送', '59秒后重新发送', 'sent'),
