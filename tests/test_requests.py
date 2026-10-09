@@ -70,7 +70,7 @@ class RequestsTests(unittest.TestCase):
             root = Path(directory)
             (root / 'index.html').write_text('''<meta charset="utf-8"><div><h1>扫码登录</h1><h2>验证码登录</h2></div>
                 <img id="qr" width="160" height="160">
-                <input id="country" role="combobox" aria-label="国家/地区" value="+1">
+                <input id="country" role="combobox" aria-label="国家/地区" value="+1" oninput="this.dataset.edited=this.value" onblur="this.value=this.dataset.edited || ' +1'.trim()">
                 <input placeholder="请输入手机号"><input type="checkbox">
                 <button onclick="fetch('/send_code/?signature=fixture', {method:'POST',
                     headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'mobile=fixture%2Bphone'})">发送验证码</button>

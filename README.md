@@ -31,7 +31,7 @@ python douyin_export.py --phone 13657450350 --send-code
 python douyin_requests.py --bundle output/douyin-api/request-bundle.json
 ```
 
-第一条命令会实际点击一次发送按钮，不拦截短信。旧参数 `--capture-sms` 是 `--send-code` 的别名，也会实际发送。区号输入后、失焦后和填手机号后都会检查；被页面改回时停止。
+第一条命令会实际点击一次发送按钮，不拦截短信。旧参数 `--capture-sms` 是 `--send-code` 的别名，也会实际发送。区号通过原生输入值设置并通知 input/change 事件，输入后、失焦后和填手机号后都会检查；被页面改回时停止。
 
 第二条只验证二维码。不要为这次操作给 requests 加 `--send-code`：请求文件记录 `sms_attempted`，浏览器已经尝试发送或记录缺失时，requests 会拒绝短信重放。接口脚本仍保留短信调用能力，但只接受明确记录未发送的请求文件，并通过独占 `.sms-attempted` 文件限制一次调用；超时或失败后也不重复发送，不删除标记重试。
 

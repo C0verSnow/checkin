@@ -26,7 +26,9 @@ class SmsResponseTests(unittest.TestCase):
         with patch('douyin_login.visible', return_value=country):
             with self.assertRaisesRegex(RuntimeError, '没有保持为 \\+86'):
                 edit_country_code(page, {})
-        page._original.keyboard_type.assert_called_once_with('+86', delay=80)
+        self.assertEqual(country.evaluate.call_args.args[1], '+86')
+        self.assertIn('setInputValue', country.evaluate.call_args.args[0])
+        page._original.keyboard_type.assert_not_called()
         page._original.keyboard_press.assert_any_call('Tab')
 
 

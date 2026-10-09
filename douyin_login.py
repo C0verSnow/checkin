@@ -57,7 +57,9 @@ def edit_country_code(page, report=None):
         country = visible(page.locator('input[name="web-login-area-code-input"]'))
     if country is None:
         raise RuntimeError("没有找到可编辑的手机号区号输入框")
-    type_input(page, country, COUNTRY_CODE)
+    edited = country.evaluate("(el, value) => (" + DOM_HELPERS + ").setInputValue(el, value)", COUNTRY_CODE)
+    if not edited or country.input_value().strip() != COUNTRY_CODE:
+        raise RuntimeError("区号输入框的内容和预期不一致，停止发送")
     original = getattr(page, "_original", None)
     key_press = original.keyboard_press if original is not None else page.keyboard.press
     key_press("Tab")
