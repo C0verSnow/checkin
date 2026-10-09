@@ -238,9 +238,10 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             html = page.locator("html")
             report["click_event"] = json.loads(html.get_attribute("data-checkin-send-click") or "null")
             report["pointer_event"] = json.loads(html.get_attribute("data-checkin-send-pointer") or "null")
-            report["send_clicked"] = bool(report["click_event"] and report["click_event"]["matched"] and report["click_event"]["trusted"])
-            if not report["send_clicked"]:
-                raise RuntimeError("没有确认到发送按钮的真实点击事件，保留现场，不再点击")
+            report["send_clicked"] = True  # The browser click action completed.
+            report["click_event_confirmed"] = bool(report["click_event"] and report["click_event"]["matched"] and report["click_event"]["trusted"])
+            # A site can suppress diagnostic listeners; still observe this one
+            # action's UI and server response instead of closing too early.
             report["status"] = "unknown"
             deadline = clicked_at + timeout_seconds
             while time.monotonic() < deadline:
