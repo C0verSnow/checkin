@@ -63,7 +63,16 @@ def select_china_country(page):
         china = visible(page.get_by_text("中国", exact=True))
         if china is None or "+86" not in china.locator("xpath=..").inner_text():
             raise
-        china.evaluate("el => el.click()")
+        box = china.bounding_box()
+        if box is None:
+            raise RuntimeError("中国区号选项没有可见位置，停止发送")
+        page.bring_to_front()
+        original = getattr(page, "_original", None)
+        mouse_click = original.mouse_click if original is not None else page.mouse.click
+        mouse_click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        deadline = time.monotonic() + 3
+        while country.input_value().strip() != "+86" and time.monotonic() < deadline:
+            page.wait_for_timeout(100)
         if country.input_value().strip() != "+86":
             raise RuntimeError("选择中国后区号仍不是 +86，停止发送")
     page.keyboard.press("Tab")

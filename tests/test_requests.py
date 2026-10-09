@@ -73,7 +73,7 @@ class RequestsTests(unittest.TestCase):
                 <input id="country" role="combobox" aria-label="国家/地区" value="+1"
                     onfocus="document.querySelector('#countries').hidden=false"
                     oninput="this.value='+1'">
-                <div id="countries" hidden><div onclick="document.querySelector('#country').value='+86'; this.parentElement.hidden=true">
+                <div id="countries" hidden><div onmousedown="document.querySelector('#country').value='+86'; this.parentElement.hidden=true">
                     <span>中国</span><span>+86</span></div></div>
                 <input placeholder="请输入手机号"><input type="checkbox">
                 <button onclick="fetch('/send_code/?signature=fixture', {method:'POST',
@@ -108,7 +108,7 @@ class RequestsTests(unittest.TestCase):
             try:
                 recorder = LoginRecorder()
                 report = capture_login(ensure_cloakbrowser().launch, '13657450350', root/'browser',
-                    True, 5, url=f'http://127.0.0.1:{server.server_port}/index.html', recorder=recorder)
+                    True, 5, headed=True, url=f'http://127.0.0.1:{server.server_port}/index.html', recorder=recorder)
                 self.assertEqual(report['status'], 'request_captured', report)
                 self.assertTrue(report['qr_saved'])
                 self.assertTrue(recorder.qr)
