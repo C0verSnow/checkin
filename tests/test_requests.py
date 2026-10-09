@@ -42,7 +42,9 @@ class RequestsTests(unittest.TestCase):
                     sms.json.return_value = payload
                 session = Mock()
                 session.request.side_effect = [qr, sms]
-                result = run(bundle, root/'api', True, 5, session=session)
+                # Keep non-sensitive fixture JSON/PNG in the existing CI artifact.
+                output = Path('verification/login/requests') / expected
+                result = run(bundle, output, True, 5, session=session)
                 self.assertEqual(result['status'], expected, result)
                 self.assertEqual(result['sms_response_state'], 'completed')
                 self.assertEqual(session.request.call_count, 2)
@@ -51,7 +53,7 @@ class RequestsTests(unittest.TestCase):
                     self.assertEqual(result['sms']['read_error'], 'ValueError')
                 if expected == 'failed':
                     self.assertEqual(result['sms']['reason'], 'rate_limited')
-                self.assertNotIn('SECRET', (root/'api/api-result.json').read_text())
+                self.assertNotIn('SECRET', (output/'api-result.json').read_text())
 
     def test_reject_non_douyin_hosts(self):
         for url in ['http://sso.douyin.com/x', 'https://douyin.com.evil.test/x',
