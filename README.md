@@ -15,6 +15,8 @@ python douyin_login.py --send-code --output-dir output/douyin-login --timeout-se
 
 输出目录中包含：
 
+登录流程启用 CloakBrowser 官方的 `humanize=True`，使用逐字输入和拟人鼠标操作，让页面收到完整的输入过程。仍然只点击一次获取验证码，未知结果不会自动重试。
+
 | 文件 | 内容 |
 | --- | --- |
 | `login.png` | 登录页面全图 |

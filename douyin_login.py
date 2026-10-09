@@ -173,7 +173,8 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
     browser = None
     page = None
     try:
-        browser = launch(headless=not headed, locale="zh-CN", timezone="Asia/Shanghai")
+        browser = launch(headless=not headed, locale="zh-CN", timezone="Asia/Shanghai",
+                         humanize=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         page.set_default_timeout(timeout_seconds * 1000)
         response = page.goto(url, wait_until="domcontentloaded")
