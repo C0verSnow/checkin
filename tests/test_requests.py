@@ -61,7 +61,7 @@ class RequestsTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 validate_transaction({'url': url, 'method': 'GET'})
 
-    def test_browser_sends_once_and_requests_only_verifies_qr(self):
+    def test_browser_capture_allows_one_explicit_requests_sms_and_saves_api_qr(self):
         png = BytesIO()
         qrcode.make('https://example.com/api-login-fixture').save(png, format='PNG')
         encoded = base64.b64encode(png.getvalue()).decode()
@@ -124,12 +124,20 @@ class RequestsTests(unittest.TestCase):
                     self.assertEqual(len(calls), 1)
                     self.assertTrue(json.loads(bundle.read_text())['sms_attempted'])
                     result = run(bundle, root/'second', True, 5)
+                    self.assertEqual(result['status'], 'request_accepted', result)
+                    self.assertTrue(result['qr_saved'])
+                    self.assertTrue(result['sms_attempted'])
+                    self.assertEqual(result['sms_response_state'], 'completed')
+                    self.assertEqual(calls, [('/send_code/?signature=fixture', b'mobile=fixture%2Bphone')] * 2)
+                    result = run(bundle, root/'third', True, 5)
                     self.assertEqual(result['status'], 'error')
-                    self.assertEqual(result['error_type'], 'ValueError')
+                    self.assertEqual(result['error_type'], 'FileExistsError')
                     self.assertFalse(result['sms_attempted'])
-                    self.assertEqual(calls, [('/send_code/?signature=fixture', b'mobile=fixture%2Bphone')])
+                    self.assertEqual(len(calls), 2, 'rerunning the bundle must not send another API SMS')
                 self.assertTrue((root/'api/api-login-qr.png').read_bytes().startswith(b'\x89PNG'))
                 self.assertTrue((root/'api/api-result.png').read_bytes().startswith(b'\x89PNG'))
+                self.assertTrue((root/'second/api-login-qr.png').read_bytes().startswith(b'\x89PNG'))
+                self.assertTrue((root/'second/api-result.png').read_bytes().startswith(b'\x89PNG'))
             finally:
                 server.shutdown()
                 server.server_close()
