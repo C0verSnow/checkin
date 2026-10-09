@@ -131,15 +131,16 @@ def summarize_sms_response(response):
                 break
         message = data.get("description") or data.get("message") or payload.get("description") or payload.get("message") or ""
         summary["message"] = str(message)[:300]
-        if data.get("verify_center_decision_conf") or re.search(r"验证|滑块|captcha|verification|verify", summary["message"], re.I):
+        if data.get("verify_center_decision_conf"):
             summary["status"] = "verification_required"
         elif response.status >= 400:
             summary["status"] = "failed"
-        elif "code" in summary:
-            if type(summary["code"]) is int and summary["code"] == 0 and 200 <= response.status < 300:
-                summary["status"] = "request_accepted"
-            elif summary["code"] not in (0, "0"):
-                summary["status"] = "failed"
+        elif type(summary.get("code")) is int and summary["code"] == 0 and 200 <= response.status < 300:
+            summary["status"] = "request_accepted"
+        elif re.search(r"安全验证|完成验证|滑块|captcha|verification|verify", summary["message"], re.I):
+            summary["status"] = "verification_required"
+        elif "code" in summary and summary["code"] not in (0, "0"):
+            summary["status"] = "failed"
     except Exception as exc:
         summary["read_error"] = str(exc)
         if response.status >= 400:

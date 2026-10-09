@@ -30,7 +30,7 @@ class LoginTests(unittest.TestCase):
         response = Mock(url='https://sso.douyin.com/passport/web/send_code/?token=secret', status=200)
         response.json.return_value = {'message': 'success'}
         self.assertEqual(summarize_sms_response(response)['status'], 'unknown')
-        response.json.return_value = {'data': {'error_code': 0, 'token': 'secret'}}
+        response.json.return_value = {'data': {'error_code': 0, 'description': '验证码发送成功', 'token': 'secret'}}
         result = summarize_sms_response(response)
         self.assertEqual(result['status'], 'request_accepted')
         self.assertNotIn('secret', json.dumps(result))
