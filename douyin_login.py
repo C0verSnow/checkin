@@ -32,9 +32,18 @@ def phone_field(page):
 
 def type_input(page, field, value):
     """Focus the actual input without humanized locator click coordinates."""
-    field.focus()
-    page.keyboard.press("ControlOrMeta+A")
-    page.keyboard.type(value, delay=80)
+    # CloakBrowser also patches Locator.focus; use the DOM input itself so
+    # focusing cannot turn into another coordinate-based mouse action.
+    focused = field.evaluate("el => { el.focus(); return document.activeElement === el; }")
+    if not focused:
+        raise RuntimeError("输入框没有获得焦点，停止发送")
+    original = getattr(page, "_original", None)
+    if original is not None:
+        original.keyboard_press("ControlOrMeta+A")
+        original.keyboard_type(value, delay=80)
+    else:
+        page.keyboard.press("ControlOrMeta+A")
+        page.keyboard.type(value, delay=80)
     if field.input_value() != value:
         raise RuntimeError("输入框的内容和预期不一致，停止发送")
 

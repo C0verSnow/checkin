@@ -4,10 +4,20 @@ import json
 import unittest
 from unittest.mock import Mock
 
-from douyin_login import observe_sms_requests, summarize_sms_response
+from douyin_login import observe_sms_requests, summarize_sms_response, type_input
 
 
 class SmsResponseTests(unittest.TestCase):
+    def test_input_must_receive_focus_before_any_keyboard_action(self):
+        page = Mock()
+        field = Mock()
+        field.evaluate.return_value = False
+        with self.assertRaisesRegex(RuntimeError, '没有获得焦点'):
+            type_input(page, field, '+86')
+        page._original.keyboard_press.assert_not_called()
+        page._original.keyboard_type.assert_not_called()
+        field.focus.assert_not_called()
+
     def test_business_errors_override_success_and_sensitive_fields_are_not_saved(self):
         cases = [
             ({'data': {'error_code': '0'}}, 200, 'request_accepted', 0),
