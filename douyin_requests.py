@@ -87,6 +87,13 @@ def run(bundle_path, output, send_code=False, timeout=60, session=None):
         if bundle.get("version") != 1:
             raise ValueError("不支持的请求文件版本")
         qr_response = replay(session, bundle.get("qr"), timeout)
+        report["qr_http_status"] = qr_response.status_code
+        report["qr_content_type"] = qr_response.headers.get("Content-Type", "")
+        if "json" in report["qr_content_type"]:
+            payload = qr_response.json()
+            data = payload.get("data", {}) if isinstance(payload, dict) else {}
+            if isinstance(data, dict):
+                report["qr_data_fields"] = sorted(data)
         save_api_qr(qr_response, output)
         report["qr_saved"] = True
         report["status"] = "not_requested"

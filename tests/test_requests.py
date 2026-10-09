@@ -33,8 +33,8 @@ class RequestsTests(unittest.TestCase):
         calls = []
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'index.html').write_text('''<meta charset="utf-8"><h1>扫码登录</h1>
-                <img id="qr" width="160" height="160"><h2>验证码登录</h2>
+            (root / 'index.html').write_text('''<meta charset="utf-8"><div><h1>扫码登录</h1><h2>验证码登录</h2></div>
+                <img id="qr" width="160" height="160">
                 <input role="combobox" aria-label="国家/地区" value="+1">
                 <input placeholder="请输入手机号"><input type="checkbox">
                 <button onclick="fetch('/send_code/?signature=fixture', {method:'POST',
