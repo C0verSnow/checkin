@@ -12,7 +12,7 @@ on:
         required: true
         default: '13657450350'
       send_code:
-        description: '浏览器向指定手机号点击一次发送验证码；requests 只验证二维码'
+        description: '浏览器发送一次记录请求，随后 requests 再发送一次并保存接口二维码'
         type: boolean
         default: false
 
@@ -56,7 +56,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m playwright install-deps chromium
           sudo apt-get install -y fonts-noto-cjk xvfb
-      - name: Record browser SMS response and verify QR with requests
+      - name: Record browser requests and verify SMS and QR with requests
         env:
           SEND_CODE: ${{ inputs.send_code }}
           PHONE: ${{ inputs.phone }}
@@ -68,9 +68,10 @@ jobs:
           fi
           capture_status=0
           xvfb-run -a -s "-screen 0 1920x1080x24" python douyin_export.py --headed --phone "$PHONE" "${capture_args[@]}" || capture_status=$?
-          # Browser may already have sent SMS. requests only verifies the QR.
-          python douyin_requests.py --bundle output/douyin-api/request-bundle.json
-          exit "$capture_status"
+          echo "Browser capture exit status: $capture_status"
+          # Explicit send_code also authorizes one independent requests SMS.
+          # The API result decides success, even if the browser request failed.
+          python douyin_requests.py --bundle output/douyin-api/request-bundle.json "${capture_args[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

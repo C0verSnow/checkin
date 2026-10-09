@@ -62,7 +62,7 @@ class LoginRecorder:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="记录抖音登录请求和浏览器短信返回，供 requests 验证二维码")
+    parser = argparse.ArgumentParser(description="记录抖音登录请求和浏览器短信返回，供 requests 独立调用接口")
     parser.add_argument("--phone", required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("output/douyin-api"))
     parser.add_argument("--send-code", "--capture-sms", dest="send_code", action="store_true",
