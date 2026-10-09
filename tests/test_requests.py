@@ -70,11 +70,12 @@ class RequestsTests(unittest.TestCase):
             root = Path(directory)
             (root / 'index.html').write_text('''<meta charset="utf-8"><div><h1>扫码登录</h1><h2>验证码登录</h2></div>
                 <img id="qr" width="160" height="160">
-                <input id="country" role="combobox" aria-label="国家/地区" value="+1"
-                    onfocus="document.querySelector('#countries').hidden=false"
+                <input id="country" role="combobox" aria-label="国家/地区" aria-owns="select-ul" value="+1"
+                    onfocus="document.querySelector('#select-ul').hidden=false"
                     oninput="this.value='+1'">
-                <div id="countries" hidden><div onmousedown="document.querySelector('#country').value='+86'; this.parentElement.hidden=true">
-                    <span>中国</span><span>+86</span></div></div>
+                <ul id="select-ul" hidden style="list-style:none;padding:0"><li id="areacode_item_0" role="option"
+                    onclick="if(event.isTrusted)return;document.querySelector('#country').value='+86'; this.parentElement.hidden=true">
+                    <span>中国</span><span>+86</span></li></ul>
                 <input placeholder="请输入手机号"><input type="checkbox">
                 <button onclick="fetch('/send_code/?signature=fixture', {method:'POST',
                     headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'mobile=fixture%2Bphone'})">发送验证码</button>
@@ -111,6 +112,7 @@ class RequestsTests(unittest.TestCase):
                     True, 5, headed=True, url=f'http://127.0.0.1:{server.server_port}/index.html', recorder=recorder)
                 self.assertEqual(report['status'], 'request_captured', report)
                 self.assertTrue(report['qr_saved'])
+                self.assertEqual(report['country_selection']['reason'], 'option_clicked')
                 self.assertTrue(recorder.qr)
                 self.assertTrue(recorder.sms)
                 self.assertEqual(calls, [], 'browser must not send SMS')

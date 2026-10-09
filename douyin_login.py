@@ -15,6 +15,7 @@ URL = "https://www.douyin.com/"
 DEFAULT_PHONE = "13657450350"
 SEND_TEXT = re.compile(r"^(发送验证码|获取验证码)$")
 QR_SELECTOR = 'img, canvas, div'
+DOM_HELPERS = Path(__file__).with_name("douyin_dom.js").read_text(encoding="utf-8")
 
 
 def visible(locator):
@@ -34,7 +35,7 @@ def type_input(page, field, value):
     """Focus the actual input without humanized locator click coordinates."""
     # CloakBrowser also patches Locator.focus; use the DOM input itself so
     # focusing cannot turn into another coordinate-based mouse action.
-    focused = field.evaluate("el => { el.focus(); return document.activeElement === el; }")
+    focused = field.evaluate("el => (" + DOM_HELPERS + ").focusInput(el)")
     if not focused:
         raise RuntimeError("输入框没有获得焦点，停止发送")
     original = getattr(page, "_original", None)
@@ -48,7 +49,7 @@ def type_input(page, field, value):
         raise RuntimeError("输入框的内容和预期不一致，停止发送")
 
 
-def select_china_country(page):
+def select_china_country(page, report=None):
     """Edit the country input, or select China when the page resets typed text."""
     country = visible(page.get_by_role("combobox", name="国家/地区", exact=True))
     if country is None:
@@ -73,6 +74,13 @@ def select_china_country(page):
         deadline = time.monotonic() + 3
         while country.input_value().strip() != "+86" and time.monotonic() < deadline:
             page.wait_for_timeout(100)
+        if country.input_value().strip() != "+86":
+            selection = country.evaluate("el => (" + DOM_HELPERS + ").selectChina(el)")
+            if report is not None:
+                report["country_selection"] = selection
+            deadline = time.monotonic() + 3
+            while country.input_value().strip() != "+86" and time.monotonic() < deadline:
+                page.wait_for_timeout(100)
         if country.input_value().strip() != "+86":
             raise RuntimeError("选择中国后区号仍不是 +86，停止发送")
     page.keyboard.press("Tab")
@@ -310,7 +318,7 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             field = phone_field(page)
         if field is None:
             raise RuntimeError("没有找到手机号输入框")
-        country = select_china_country(page)
+        country = select_china_country(page, report)
         report["country_code"] = "+86"
         type_input(page, field, phone)
         if country.input_value().strip() != "+86":
