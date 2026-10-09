@@ -202,7 +202,8 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
     try:
         browser = launch(headless=not headed, locale="zh-CN", timezone="Asia/Shanghai",
                          humanize=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page = browser.new_page(viewport={"width": 1440, "height": 1000},
+                                service_workers="block")
         if recorder is not None:
             recorder.attach(page)
         page.set_default_timeout(timeout_seconds * 1000)
