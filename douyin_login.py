@@ -29,46 +29,18 @@ def phone_field(page):
     return visible(page.get_by_placeholder(re.compile("手机号|手机号码")))
 
 
-def select_china_country(page, field):
-    """The overseas runner defaults to +1; never send until +86 is selected."""
-    country_pattern = re.compile(r"^\+\s*\d{1,4}$")
-
-    def country_in(row):
-        label = visible(row.get_by_text(country_pattern, exact=True))
-        if label is not None:
-            return label, re.sub(r"\s", "", label.inner_text()).lstrip("+")
-        # Douyin can render the country code as a read-only input value.
-        inputs = row.locator("input")
-        for index in range(inputs.count()):
-            candidate = inputs.nth(index)
-            if candidate.is_visible() and re.fullmatch(r"\+?\d{1,4}", candidate.input_value()):
-                return candidate, candidate.input_value().lstrip("+")
-        return None, None
-
-    row = field
-    country, code = None, None
-    for _ in range(5):
-        row = row.locator("xpath=..")
-        country, code = country_in(row)
-        if country is not None:
-            break
+def select_china_country(page):
+    """Edit the country input directly; there is no dropdown selection step."""
+    country = visible(page.get_by_role("combobox", name="国家/地区", exact=True))
     if country is None:
-        raise RuntimeError("没有找到手机号区号，不能确认收件号码")
-    if code != "86":
-        if country.get_attribute("role") == "combobox":
-            # This control opens its options when typing, not on an input click.
-            country.fill("+86")
-        else:
-            country.click()
-        option = page.get_by_text(re.compile(r"^\+?\s*86$"), exact=True)
-        option.first.wait_for()
-        choice = visible(option)
-        if choice is None:
-            raise RuntimeError("没有找到中国大陆 +86 选项")
-        choice.click()
-    _, selected_code = country_in(row)
-    if selected_code != "86":
-        raise RuntimeError("中国大陆 +86 区号没有选中，停止发送")
+        country = visible(page.locator('input[name="web-login-area-code-input"]'))
+    if country is None:
+        raise RuntimeError("没有找到可编辑的手机号区号输入框")
+    country.fill("+86")
+    country.press("Tab")
+    if country.input_value().strip() != "+86":
+        raise RuntimeError("区号没有改成 +86，停止发送")
+    return country
 
 
 def open_login(page):
@@ -167,9 +139,11 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             field = phone_field(page)
         if field is None:
             raise RuntimeError("没有找到手机号输入框")
-        select_china_country(page, field)
+        country = select_china_country(page)
         report["country_code"] = "+86"
         field.fill(phone)
+        if country.input_value().strip() != "+86":
+            raise RuntimeError("填写手机号后区号发生变化，停止发送")
         # Agree to the login terms only in the visible phone form when required.
         checkbox = visible(page.get_by_role("checkbox"))
         if checkbox is not None and not checkbox.is_checked():

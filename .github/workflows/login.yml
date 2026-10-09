@@ -68,5 +68,7 @@ jobs:
             output/douyin-login/
             douyin_login.py
             capture_page.py
+            requirements.txt
+            README.md
           if-no-files-found: error
           retention-days: 7
