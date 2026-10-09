@@ -151,28 +151,86 @@ def summarize_sms_response(response):
             raise ValueError("短信接口没有返回 JSON 对象")
         data = payload.get("data")
         data = data if isinstance(data, dict) else {}
-        for key in ("error_code", "status_code", "code"):
-            value = data.get(key, payload.get(key))
-            if value is not None:
-                summary["code"] = value
-                break
-        message = data.get("description") or data.get("message") or payload.get("description") or payload.get("message") or ""
-        summary["message"] = str(message)[:300]
-        if data.get("verify_center_decision_conf"):
+        # Check the business result as well as the outer envelope. An outer
+        # success must not hide an inner failure (or the other way around).
+        codes = []
+        messages = []
+        for source in (data, payload):
+            for key in ("error_code", "status_code", "code"):
+                value = source.get(key)
+                if type(value) is int:
+                    codes.append(value)
+                elif isinstance(value, str) and re.fullmatch(r"-?\d{1,12}", value):
+                    codes.append(int(value))
+            for key in ("description", "message", "error_msg", "errmsg", "status_msg"):
+                value = source.get(key)
+                if isinstance(value, str) and value and value not in messages:
+                    messages.append(value)
+        if codes:
+            summary["code"] = next((code for code in codes if code != 0), codes[0])
+        summary["message"] = " | ".join(messages)[:300]
+        feedback = " | ".join(messages)
+        if response.status == 429 or re.search(r"频繁|频率|次数.{0,8}(限制|上限)|too many|rate.?limit|frequen", feedback, re.I):
+            summary.update(status="failed", reason="rate_limited")
+        elif any(source.get("verify_center_decision_conf") for source in (data, payload)) or re.search(
+                r"安全验证|完成验证|滑块|captcha|verification|verify", feedback, re.I):
             summary["status"] = "verification_required"
         elif response.status >= 400:
             summary["status"] = "failed"
-        elif type(summary.get("code")) is int and summary["code"] == 0 and 200 <= response.status < 300:
-            summary["status"] = "request_accepted"
-        elif re.search(r"安全验证|完成验证|滑块|captcha|verification|verify", summary["message"], re.I):
-            summary["status"] = "verification_required"
-        elif "code" in summary and summary["code"] not in (0, "0"):
+        elif re.search(r"发送失败|请求失败|手机号.{0,8}(错误|不正确|无效)|fail|invalid|error", feedback, re.I):
             summary["status"] = "failed"
+        elif "code" in summary and summary["code"] != 0:
+            summary["status"] = "failed"
+        elif summary.get("code") == 0 and 200 <= response.status < 300:
+            summary["status"] = "request_accepted"
     except Exception as exc:
         summary["read_error"] = type(exc).__name__
         if response.status >= 400:
             summary["status"] = "failed"
+        if response.status == 429:
+            summary.update(status="failed", reason="rate_limited")
     return summary
+
+
+def observe_sms_requests(page, report, recorder=None):
+    """Read bodies after requestfinished; keep aborted requests distinct from replies."""
+    pending = {}
+    report["sms_requests"] = []
+
+    def tracked(request):
+        return report["send_attempted"] and request.method == "POST" and sms_endpoint(request.url)
+
+    def on_request(request):
+        if tracked(request):
+            endpoint = urlsplit(request.url)
+            item = {"endpoint": endpoint.scheme + "://" + endpoint.netloc + endpoint.path,
+                    "state": "pending"}
+            report["sms_requests"].append(item)
+            pending[request] = item
+
+    def on_finished(request):
+        if request not in pending:
+            return
+        item = pending.pop(request)
+        try:
+            response = request.response()
+            if response is None:
+                item["state"] = "no_response"
+                return
+            report["sms_responses"].append(summarize_sms_response(response))
+            item["state"] = "completed"
+        except Exception as exc:
+            item.update(state="read_error", error_type=type(exc).__name__)
+
+    def on_failed(request):
+        if request in pending:
+            pending.pop(request)["state"] = "blocked" if recorder is not None else "network_error"
+
+    # Context events also cover requests initiated by embedded frames.
+    page.context.on("request", on_request)
+    page.context.on("requestfinished", on_finished)
+    page.context.on("requestfailed", on_failed)
+    return pending
 
 
 def visible_feedback(page):
@@ -238,10 +296,7 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
             raise RuntimeError("没有找到发送验证码按钮")
         page.screenshot(path=str(output / "before-send.png"), full_page=True)
         if send_code:
-            def on_response(response):
-                if sms_endpoint(response.url) and response.request.method == "POST":
-                    report["sms_responses"].append(summarize_sms_response(response))
-            page.on("response", on_response)
+            pending_sms = observe_sms_requests(page, report, recorder)
             send.scroll_into_view_if_needed()
             report["send_button_box"] = send.bounding_box()
             if report["send_button_box"] is None:
@@ -289,18 +344,23 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
                 feedback_button = visible(page.get_by_text(re.compile(r"\d+\s*(秒|s|S).{0,12}|重新发送|重新获取")))
                 button_text = feedback_button.inner_text() if feedback_button is not None else ""
                 status = sms_result(text, button_text)
-                if status not in {"sent", "failed", "verification_required"}:
-                    for result in report["sms_responses"]:
-                        if result["status"] != "unknown":
-                            status = result["status"]
-                            if status in {"failed", "verification_required"}:
-                                break
+                report["ui_status"] = status
+                for result in report["sms_responses"]:
+                    if result["status"] in {"failed", "verification_required"}:
+                        status = result["status"]
+                        break
+                    if result["status"] == "request_accepted" and status not in {"failed", "verification_required"}:
+                        status = result["status"]
                 report.update(status=status, feedback_text=text, button_text=button_text)
-                if status in {"sent", "failed", "verification_required"}:
-                    break
-                if status == "request_accepted" and time.monotonic() - clicked_at >= 2:
+                # UI feedback may arrive before the HTTP body. Wait for the
+                # in-flight response, within the existing timeout, without clicking again.
+                if status in {"sent", "failed", "verification_required", "request_accepted"} and not pending_sms and time.monotonic() - clicked_at >= 2:
                     break
                 page.wait_for_timeout(250)
+            report["sms_response_state"] = (
+                "completed" if report["sms_responses"] else
+                "pending_timeout" if pending_sms else
+                report["sms_requests"][-1]["state"] if report["sms_requests"] else "not_observed")
         return report
     except Exception as exc:
         report.update(status="error", error=str(exc))

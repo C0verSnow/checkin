@@ -58,7 +58,11 @@ python douyin_requests.py --bundle output/douyin-api/request-bundle.json --send-
 | `api-result.json` | 接口 HTTP 状态、业务结果码和发送结果 |
 | `api-result.png` | 接口报告生成的结果图片，明确标注不是浏览器截图 |
 
-短信业务结果码明确为整数 `0`，HTTP 为 2xx，且没有要求安全验证时，才记为 `request_accepted`。它表示服务器接受请求，不保证手机已收到。HTTP 200 或消息 `success` 本身不算成功；缺少明确结果写 `unknown`，要求安全验证写 `verification_required`，明确失败写 `failed`。这些情况返回非零退出码。二维码失败、捕获不到短信接口或网络异常也返回失败，不补发短信。报告不包含完整签名 URL、Cookie 或响应令牌。
+短信业务结果码明确为 `0`（接受整数或数字字符串），HTTP 为 2xx，且没有失败或安全验证信息时，才记为 `request_accepted`。它表示服务器接受请求，不保证手机已收到。外层 `success` 或 `code: 0` 不会掩盖内层失败；“验证码发送频繁”或 HTTP 429 写为 `failed`，并记录 `reason: rate_limited`。HTTP 200 或消息 `success` 本身不算成功；缺少明确结果写 `unknown`，要求安全验证写 `verification_required`，明确失败写 `failed`。这些情况返回非零退出码。二维码失败、捕获不到短信接口或网络异常也返回失败，不补发短信。报告不包含完整签名 URL、Cookie 或响应令牌。
+
+按钮点击沿用现有逻辑。浏览器从点击前监听整个浏览器上下文的短信请求，等请求完成再读取响应体；网页先显示成功或失败时，会在原有超时范围内等待尚未读完的接口返回，接口失败优先于网页成功提示。`result.json` 中的 `sms_requests` 记录请求过程，`sms_responses` 保存接口状态、结果码和提示，`ui_status` 单独记录网页反馈。`sms_response_state` 区分已收到返回（`completed`）、导出时主动拦截（`blocked`）、网络失败（`network_error`）、响应未完成（`pending_timeout`）和没有观察到请求（`not_observed`）。被浏览器拦截的请求没有服务器返回，不能把拦截当成发送成功。`api-result.json` 和 `api-result.png` 也记录 requests 的返回状态与限流原因。
+
+issue #3 最新说明已确认按钮点击成功，并出现发送频繁提示。因此这一轮只优化返回数据处理，不再发真实短信；通过远端测试接口验证限流、延迟返回、安全验证和非 JSON 返回。
 
 ## 远端检查
 

@@ -59,13 +59,15 @@ def save_api_qr(response, output):
 
 def save_result_png(report, output):
     from PIL import Image, ImageDraw
-    image = Image.new("RGB", (1000, 360), "white")
+    image = Image.new("RGB", (1000, 432), "white")
     draw = ImageDraw.Draw(image)
     lines = ["Douyin requests API result (not a browser screenshot)",
              "UTC: " + report["time_utc"], "QR saved from API: " + str(report["qr_saved"]),
              "SMS request attempted: " + str(report["sms_attempted"]),
              "Status: " + report["status"], "HTTP: " + str(report.get("sms", {}).get("http_status", "-")),
              "Server code: " + str(report.get("sms", {}).get("code", "-")),
+             "Response state: " + report.get("sms_response_state", "not_requested"),
+             "Reason: " + str(report.get("sms", {}).get("reason", report.get("sms", {}).get("read_error", "-"))),
              "Server acceptance does not prove delivery to the phone."]
     for index, line in enumerate(lines):
         draw.text((24, 24 + index * 36), line, fill="black")
@@ -78,7 +80,7 @@ def run(bundle_path, output, send_code=False, timeout=60, session=None):
     for name in ("api-login-qr.png", "api-result.png", "api-result.json"):
         (output / name).unlink(missing_ok=True)
     report = {"time_utc": datetime.now(timezone.utc).isoformat(), "qr_saved": False,
-              "sms_attempted": False, "status": "error"}
+              "sms_attempted": False, "status": "error", "sms_response_state": "not_requested"}
     own_session = session is None
     session = session or requests.Session()
     try:
@@ -110,7 +112,9 @@ def run(bundle_path, output, send_code=False, timeout=60, session=None):
             fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(fd)
             report["sms_attempted"] = True
+            report["sms_response_state"] = "pending"
             response = replay(session, bundle["sms"], timeout)
+            report["sms_response_state"] = "completed"
             class Adapter:
                 url = response.url
                 status = response.status_code
@@ -122,6 +126,8 @@ def run(bundle_path, output, send_code=False, timeout=60, session=None):
         # Exception messages may include signed URLs: never print them.
         report["status"] = "error"
         report["error_type"] = type(exc).__name__
+        if report["sms_response_state"] == "pending":
+            report["sms_response_state"] = "network_error"
     finally:
         if own_session:
             session.close()

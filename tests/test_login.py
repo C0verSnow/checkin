@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 
 from browser_setup import ensure_cloakbrowser
@@ -69,6 +70,7 @@ class LoginTests(unittest.TestCase):
                 <button onclick="if (!document.querySelector('input[type=checkbox]').checked || document.querySelector('#country').value !== '+86') return;
                 window.clicks++; this.textContent='59秒后重新发送';
                 const outcome=new URLSearchParams(location.search).get('feedback');
+                if (outcome==='api_delayed_failure') document.querySelector('#feedback').textContent='验证码已发送';
                 if (outcome==='iframe') {
                     const frame=document.createElement('iframe'); frame.srcdoc='<p>请完成安全验证</p>'; document.body.append(frame);
                 } else if (!outcome.startsWith('api_')) document.querySelector('#feedback').textContent=outcome;
@@ -79,6 +81,11 @@ class LoginTests(unittest.TestCase):
                     outcome = parse_qs(urlsplit(self.path).query).get('outcome', [''])[0]
                     payload = {'data': {'error_code': 0}} if outcome == 'api_accepted' else {}
                     if outcome == 'api_rejected':
+                        payload = {'data': {'error_code': 12, 'description': '发送失败'}}
+                    if outcome == 'api_rate_limited':
+                        payload = {'code': 0, 'message': 'success', 'data': {'error_code': 1105, 'description': '验证码发送频繁，请稍后再试'}}
+                    if outcome == 'api_delayed_failure':
+                        time.sleep(2.5)
                         payload = {'data': {'error_code': 12, 'description': '发送失败'}}
                     body = json.dumps(payload).encode()
                     self.send_response(200)
@@ -91,7 +98,7 @@ class LoginTests(unittest.TestCase):
             thread.start()
             browser_launch = ensure_cloakbrowser().launch
             try:
-                for feedback, expected in [('验证码已发送', 'sent'), ('验证码发送失败', 'failed'), ('请完成安全验证', 'verification_required'), ('等待反馈', 'countdown_only'), ('api_accepted', 'request_accepted'), ('api_rejected', 'failed'), ('iframe', 'verification_required')]:
+                for feedback, expected in [('验证码已发送', 'sent'), ('验证码发送失败', 'failed'), ('请完成安全验证', 'verification_required'), ('等待反馈', 'countdown_only'), ('api_accepted', 'request_accepted'), ('api_rejected', 'failed'), ('api_rate_limited', 'failed'), ('api_delayed_failure', 'failed'), ('iframe', 'verification_required')]:
                     with self.subTest(expected=expected):
                         from urllib.parse import urlencode
                         def launch(**kwargs):
@@ -118,6 +125,12 @@ class LoginTests(unittest.TestCase):
                         self.assertEqual(report['status'], expected, report)
                         self.assertTrue(report['qr_saved'])
                         self.assertTrue(report['send_clicked'], report)
+                        self.assertEqual(report['sms_response_state'], 'completed', report)
+                        self.assertEqual(len(report['sms_responses']), 1)
+                        if feedback == 'api_rate_limited':
+                            self.assertEqual(report['sms_responses'][0]['reason'], 'rate_limited')
+                        if feedback == 'api_delayed_failure':
+                            self.assertEqual(report['ui_status'], 'sent')
                         self.assertEqual(evidence, {'clicks': 1, 'phone': '13657450350', 'country': '+86'})
                         self.assertEqual(json.loads((output/'result.json').read_text())['status'], expected)
                         for name in ('login-qr.png', 'before-send.png', 'after-click.png', 'sms-result.png'):
