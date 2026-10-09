@@ -142,7 +142,7 @@ def summarize_sms_response(response):
         elif "code" in summary and summary["code"] not in (0, "0"):
             summary["status"] = "failed"
     except Exception as exc:
-        summary["read_error"] = str(exc)
+        summary["read_error"] = type(exc).__name__
         if response.status >= 400:
             summary["status"] = "failed"
     return summary
@@ -211,25 +211,37 @@ def capture_login(launch, phone, output, send_code=False, timeout_seconds=60, he
                 if sms_endpoint(response.url) and response.request.method == "POST":
                     report["sms_responses"].append(summarize_sms_response(response))
             page.on("response", on_response)
+            report["send_button_box"] = send.bounding_box()
             send.evaluate("""el => {
-                window.__checkinSendClick = null;
-                document.addEventListener('click', event => {
-                    window.__checkinSendClick = {trusted: event.isTrusted,
-                        matched: el === event.target || el.contains(event.target),
-                        target_text: (event.target.textContent || '').trim().slice(0, 100)};
+                const root = document.documentElement;
+                delete root.dataset.checkinSendClick;
+                delete root.dataset.checkinSendPointer;
+                const matched = event => el === event.target || el.contains(event.target)
+                    || /^(发送验证码|获取验证码)$/.test((event.target.textContent || '').trim());
+                window.addEventListener('pointerdown', event => {
+                    root.dataset.checkinSendPointer = JSON.stringify({trusted: event.isTrusted,
+                        matched: matched(event), x: event.clientX, y: event.clientY});
+                }, {capture: true, once: true});
+                window.addEventListener('click', event => {
+                    root.dataset.checkinSendClick = JSON.stringify({trusted: event.isTrusted,
+                        matched: matched(event), x: event.clientX, y: event.clientY,
+                        target_text: (event.target.textContent || '').trim().slice(0, 100)});
                 }, {capture: true, once: true});
             }""")
             # Exactly one click; do not retry SMS requests on ambiguous feedback.
             report["send_attempted"] = True
             send.click()
-            report["click_event"] = page.evaluate("() => window.__checkinSendClick")
+            clicked_at = time.monotonic()
+            page.wait_for_timeout(250)
+            page.screenshot(path=str(output / "after-click.png"), full_page=True)
+            # DOM attributes are shared even when the browser isolates JS worlds.
+            html = page.locator("html")
+            report["click_event"] = json.loads(html.get_attribute("data-checkin-send-click") or "null")
+            report["pointer_event"] = json.loads(html.get_attribute("data-checkin-send-pointer") or "null")
             report["send_clicked"] = bool(report["click_event"] and report["click_event"]["matched"] and report["click_event"]["trusted"])
             if not report["send_clicked"]:
                 raise RuntimeError("没有确认到发送按钮的真实点击事件，保留现场，不再点击")
             report["status"] = "unknown"
-            clicked_at = time.monotonic()
-            page.wait_for_timeout(250)
-            page.screenshot(path=str(output / "after-click.png"), full_page=True)
             deadline = clicked_at + timeout_seconds
             while time.monotonic() < deadline:
                 text = visible_feedback(page)
