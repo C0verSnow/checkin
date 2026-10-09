@@ -62,12 +62,12 @@ python douyin_requests.py --bundle output/douyin-api/request-bundle.json --send-
 
 按钮点击沿用现有逻辑。浏览器从点击前监听整个浏览器上下文的短信请求，等请求完成再读取响应体；网页先显示成功或失败时，会在原有超时范围内等待尚未读完的接口返回，接口失败优先于网页成功提示。`result.json` 中的 `sms_requests` 记录请求过程，`sms_responses` 保存接口状态、结果码和提示，`ui_status` 单独记录网页反馈。`sms_response_state` 区分已收到返回（`completed`）、导出时主动拦截（`blocked`）、网络失败（`network_error`）、响应未完成（`pending_timeout`）和没有观察到请求（`not_observed`）。被浏览器拦截的请求没有服务器返回，不能把拦截当成发送成功。`api-result.json` 和 `api-result.png` 也记录 requests 的返回状态与限流原因。
 
-issue #3 最新说明已确认按钮点击成功，并出现发送频繁提示。因此这一轮只优化返回数据处理，不再发真实短信；通过远端测试接口验证限流、延迟返回、安全验证和非 JSON 返回。
+issue #3 最新说明已确认按钮点击成功，并出现发送频繁提示。本轮保留按钮点击逻辑，优化返回数据处理，通过远端测试接口验证限流、延迟返回、安全验证和非 JSON 返回。实际短信只使用用户明确授权的号码，每个号码最多一次，不把限流当成成功。
 
 ## 远端检查
 
 GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR 时运行真实 CloakBrowser 登录测试，以及“浏览器捕获 → 拦截短信 → requests 调用测试接口 → 保存 PNG”的完整检查。测试站点不访问抖音，也不会发真实短信。
 
-手动运行工作流会通过 CloakBrowser 导出抖音请求，再用 `requests` 直接请求抖音。默认只验证二维码；勾选 `send_code` 才由 `requests` 尝试一次短信。附件 `douyin-login` 提供 PNG、去掉敏感请求信息的报告及 Python 代码，保留 7 天。
+手动运行工作流会通过 CloakBrowser 导出抖音请求，再用 `requests` 直接请求抖音。在 `phone` 中填写已获准使用的完整手机号，默认只验证二维码；勾选 `send_code` 才由 `requests` 向该号码尝试一次短信。附件 `douyin-login` 提供 PNG、去掉敏感请求信息的报告及 Python 代码，保留 7 天。
 
 按仓库约定，不进行本地构建、编译或会触发编译的测试。远端检查结果和任务过程记录在 `tasklist.md`。

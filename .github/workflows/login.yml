@@ -6,8 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      phone:
+        description: '已获准接收测试短信的手机号'
+        type: string
+        required: true
+        default: '13657450350'
       send_code:
-        description: 'requests 实际发送一次验证码（13657450350）；浏览器发送始终被拦截'
+        description: 'requests 向指定手机号实际发送一次验证码；浏览器发送始终被拦截'
         type: boolean
         default: false
 
@@ -54,6 +59,7 @@ jobs:
       - name: Export real requests and call Douyin API directly
         env:
           SEND_CODE: ${{ inputs.send_code }}
+          PHONE: ${{ inputs.phone }}
         run: |
           trap 'rm -f output/douyin-api/request-bundle.json' EXIT
           capture_args=()
@@ -62,7 +68,7 @@ jobs:
             capture_args+=(--capture-sms)
             request_args+=(--send-code)
           fi
-          xvfb-run -a -s "-screen 0 1920x1080x24" python douyin_export.py --headed --phone 13657450350 "${capture_args[@]}"
+          xvfb-run -a -s "-screen 0 1920x1080x24" python douyin_export.py --headed --phone "$PHONE" "${capture_args[@]}"
           python douyin_requests.py --bundle output/douyin-api/request-bundle.json "${request_args[@]}"
       - uses: actions/upload-artifact@v4
         if: always()
