@@ -77,3 +77,11 @@ GitHub Actions 的 **Douyin login screenshots** 在 feature 分支 push 和 PR �
 手动运行 **Douyin login screenshots**，选择 feature 分支，保持 `send_code=false`，即可验证 issue #3 的二维码流程；`phone` 只用于浏览器表单准备，不点击发送。勾选 `send_code` 后浏览器实际点击一次发送并记录请求，随后 requests 额外发送一次并保存二维码；这是额外的短信模式。流程按 requests 的二维码结果及所选模式判断成功。浏览器失败会保留实际结果，不阻止已捕获的请求由 requests 独立验证。附件 `douyin-login` 包含 PNG、去除敏感请求信息的报告和 Python/JavaScript 脚本，保留 7 天。
 
 按仓库约定，不进行本地构建、编译或会触发编译的测试。过程和远端结果记录在 `tasklist.md`。issue #3 真实验收只保存二维码，不发送短信；可选短信模式使用已获准接收短信的号码，不自动替换手机号或重试发送。
+
+## issue #3 验证结果
+
+- [TDD 修复前](https://github.com/C0verSnow/checkin/actions/runs/37949798873)：SVG 二维码测试失败，其余 12 个测试通过。
+- [修复后完整测试](https://github.com/C0verSnow/checkin/actions/runs/37951146446)：13 个测试全部通过。
+- [真实二维码验证与 PNG/Python 附件](https://github.com/C0verSnow/checkin/actions/runs/37950918119)：requests 收到 HTTP 200，保存可解码的 `api-login-qr.png`，`qr_saved=true`、`sms_attempted=false`、`status=not_requested`。
+
+这次真实运行中，浏览器已保存二维码并捕获接口请求，随后填写手机号时报“输入框的内容和预期不一致”。requests 独立二维码流程成功；可选手机号和短信流程仍有这个限制，未宣称真实短信模式通过。

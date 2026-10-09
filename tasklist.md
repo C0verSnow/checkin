@@ -1,7 +1,7 @@
 # 本文档为4象限的任务清单，全文书写大白话
 
 ## 想做：
-- 按 issue #3 最新要求完成 requests 保存接口登录二维码，产出 PNG 和 Python 脚本，更新文档和 PR，远端测试通过后关闭 issue。
+- 本次 issue 的二维码要求已完成，暂无新增任务。
 
 ## 做完：
 - 已读取仓库约定和用户指定的 TDD 技能及测试说明。
@@ -25,11 +25,18 @@
 - 修复已提交并推送到 feature 分支，提交为 d405362；README 已明确最新 issue 的默认二维码流程和 PNG/Python 附件。
 - 已启动不发送短信的真实验证 https://github.com/C0verSnow/checkin/actions/runs/37950918119 ，先运行完整测试，再用 requests 调用真实二维码接口。
 - 本次 Python 静态语法检查和 git diff --check 通过；没有运行本地项目代码或测试。
+- 第二轮绿灯已确认：提交 d405362 的远端测试 https://github.com/C0verSnow/checkin/actions/runs/37950819334 ，13 个测试全部通过。
+- 文档提交 e5d04ef 的 PR 测试 https://github.com/C0verSnow/checkin/actions/runs/37951146446 同样通过。
+- 不发送短信的真实流程 https://github.com/C0verSnow/checkin/actions/runs/37950918119 已成功；requests 二维码接口返回 HTTP 200，真实二维码可解码，报告为 qr_saved=true、sms_attempted=false、status=not_requested。
+- 已下载真实 PNG 和 Python 附件到被忽略的 output/issue-3-real-37950918119/，已查看接口二维码和结果 PNG。
+- 如实记录剩余限制：浏览器已保存二维码并捕获请求，随后填写手机号时报输入内容不一致；独立 requests 二维码流程成功，最新 issue 不要求短信模式通过。
+- PR #5 已按最终二维码流程重写标题和描述，并从草稿改为可审阅：https://github.com/C0verSnow/checkin/pull/5 。
+- issue #3 已按最新二维码验收要求关闭，原因为已完成：https://github.com/C0verSnow/checkin/issues/3 。
 
 ## 没做：
 - 没有进行本地构建、编译或运行测试。
-- 真实流程没有产生短信请求，没有修改手机号或关闭 issue。
-- 尚未确认 SVG 修复的远端测试结果；最新 issue 不需要真实短信验证。
+- 本次真实流程没有发送短信；没有合并 PR。
+- 没有修复真实网站的手机号输入问题；它不影响已捕获请求的 requests 二维码产出，最新 issue 不要求短信模式通过。
 
 ## 在做：
-- TDD 第二轮绿灯：提交 SVG 最小修复，用远端 CI 确认，再完成只保存二维码的真实验证和 PR 文档。
+- 没有待完成的功能修改；最后提交 README 验证证据和本任务记录。
